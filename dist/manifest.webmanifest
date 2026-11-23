@@ -1,0 +1,12 @@
+{
+  "name": "Kanji Sprint",
+  "short_name": "Kanji Sprint",
+  "description": "Quiz mobile de vocabulaire et kanji japonais",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f6f3ec",
+  "theme_color": "#f6f3ec",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
