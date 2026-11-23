@@ -1,6 +1,6 @@
 # Kanji Sprint
 
-Application PWA mobile de révision du vocabulaire et des kanji japonais.
+Application PWA mobile pour réviser le vocabulaire et les kanji japonais.
 
 ## Fonctionnalités
 
