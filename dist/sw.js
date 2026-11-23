@@ -1,5 +1,16 @@
-const CACHE='kanji-sprint-v1';
-const ASSETS=['./','index.html','styles.css','app.js','manifest.webmanifest','icon.svg'];
+const CACHE='kanji-sprint-v2';
+const ASSETS=['./','index.html','styles.css','app.js','manifest.webmanifest','icon.svg','icon-192.png','icon-512.png','apple-touch-icon.png'];
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS))));
 self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k))))));
-self.addEventListener('fetch',event=>event.respondWith(caches.match(event.request).then(cached=>cached||fetch(event.request))));
+self.addEventListener('fetch',event=>{
+  if(event.request.method!=='GET') return;
+  if(event.request.mode==='navigate') {
+    event.respondWith(fetch(event.request).catch(()=>caches.match('./')));
+    return;
+  }
+  event.respondWith(caches.match(event.request).then(cached=>cached||fetch(event.request).then(response=>{
+    const copy=response.clone();
+    caches.open(CACHE).then(cache=>cache.put(event.request,copy));
+    return response;
+  })));
+});

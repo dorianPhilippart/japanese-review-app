@@ -17,7 +17,9 @@ const defaults = { total:0, correct:0, sessions:0, streak:0, lastDay:'', mastere
 let stats = loadStats();
 let route = 'home';
 let session = null;
+let installPrompt = null;
 const app = document.querySelector('#app');
+const installButton = document.querySelector('#installButton');
 
 function loadStats(){
   try { return { ...defaults, ...JSON.parse(localStorage.getItem('kanjiSprintStats') || '{}') }; }
@@ -165,6 +167,22 @@ document.addEventListener('click',e=>{
   const goButton=e.target.closest('[data-go]'); if(goButton){go(goButton.dataset.go);return;}
   const start=e.target.closest('[data-start]'); if(start){go(start.dataset.start);return;}
   const retry=e.target.closest('[data-retry]'); if(retry){startQuiz(retry.dataset.retry);return;}
+});
+
+window.addEventListener('beforeinstallprompt', event => {
+  event.preventDefault();
+  installPrompt = event;
+  installButton.hidden = false;
+});
+installButton.addEventListener('click', async () => {
+  if(!installPrompt) return;
+  await installPrompt.prompt();
+  installPrompt = null;
+  installButton.hidden = true;
+});
+window.addEventListener('appinstalled', () => {
+  installPrompt = null;
+  installButton.hidden = true;
 });
 
 if('serviceWorker' in navigator) window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
