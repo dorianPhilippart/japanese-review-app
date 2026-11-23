@@ -8,6 +8,10 @@ Application PWA mobile pour réviser le vocabulaire et les kanji japonais.
 - saisie de lectures en hiragana ou rōmaji ;
 - QCM ;
 - cartes mémoire interactives ;
+- niveaux JLPT N5 et N4 ;
+- révision ciblée selon les résultats ;
+- prononciation japonaise ;
+- sessions personnalisables de 5, 10 ou 20 cartes ;
 - progression enregistrée localement ;
 - installation sur Android et iPhone ;
 - fonctionnement hors connexion.
@@ -15,5 +19,3 @@ Application PWA mobile pour réviser le vocabulaire et les kanji japonais.
 ## Déploiement
 
 Le workflow GitHub Actions publie automatiquement le contenu de `dist/` sur GitHub Pages à chaque push sur `main`.
-
-Dans les paramètres GitHub du dépôt, sélectionner **Settings → Pages → Source: GitHub Actions** si ce choix n'est pas déjà actif.
