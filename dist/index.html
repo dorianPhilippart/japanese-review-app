@@ -24,6 +24,7 @@
       </button>
       <div class="top-actions">
         <button class="install-pill" id="installButton" hidden>Installer</button>
+        <button class="account-pill" id="accountButton" data-go="account" aria-label="Compte et synchronisation">☁</button>
         <div class="streak" aria-label="Série actuelle"><span>🔥</span><strong id="streakCount">0</strong></div>
       </div>
     </header>
@@ -36,6 +37,8 @@
       <button class="nav-item" data-go="progress"><span class="nav-icon">◔</span><span>Progrès</span></button>
     </nav>
   </div>
+  <script src="supabase.js"></script>
+  <script src="config.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

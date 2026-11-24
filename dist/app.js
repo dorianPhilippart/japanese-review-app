@@ -1,4 +1,4 @@
-const items = [
+const fallbackItems = [
   { level:'N5', kanji:'日', word:'日本', reading:'にほん', romaji:'nihon', meaning:'Japon', clue:'soleil · jour' },
   { level:'N5', kanji:'水', word:'水', reading:'みず', romaji:'mizu', meaning:'eau', clue:'eau' },
   { level:'N5', kanji:'火', word:'火曜日', reading:'かようび', romaji:'kayoubi', meaning:'mardi', clue:'feu' },
@@ -43,6 +43,15 @@ const items = [
   { level:'N4', kanji:'意', word:'意味', reading:'いみ', romaji:'imi', meaning:'sens · signification', clue:'idée · intention' }
 ];
 
+function loadCachedCatalog(){
+  try {
+    const cached=JSON.parse(localStorage.getItem('kanjiSprintCatalog')||'null');
+    return Array.isArray(cached)&&cached.length ? cached : null;
+  } catch { return null; }
+}
+
+let items=loadCachedCatalog()||fallbackItems;
+
 const defaults = { total:0, correct:0, sessions:0, streak:0, lastDay:'', mastered:{} };
 const preferenceDefaults = { level:'all', length:5 };
 let stats = loadObject('kanjiSprintStats', defaults);
@@ -52,14 +61,36 @@ let session = null;
 let installPrompt = null;
 const app = document.querySelector('#app');
 const installButton = document.querySelector('#installButton');
+const accountButton = document.querySelector('#accountButton');
+const cloudConfig=window.KANJI_SPRINT_CONFIG||{};
+const supabase=window.createKanjiSprintClient&&cloudConfig.supabaseUrl&&cloudConfig.supabasePublishableKey
+  ? window.createKanjiSprintClient(cloudConfig.supabaseUrl,cloudConfig.supabasePublishableKey,{
+      auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}
+    })
+  : null;
+let cloudUser=null;
+let cloudStatus=supabase?'connecting':'offline';
+let cloudMessage='';
+let preferenceSyncTimer=null;
+let reviewFlushPromise=null;
 
 function loadObject(key, fallback){
   try { return { ...fallback, ...JSON.parse(localStorage.getItem(key) || '{}') }; }
   catch { return { ...fallback }; }
 }
 function saveStats(){ localStorage.setItem('kanjiSprintStats', JSON.stringify(stats)); updateStreak(); }
-function savePreferences(){ localStorage.setItem('kanjiSprintPreferences', JSON.stringify(preferences)); }
+function savePreferences(){
+  localStorage.setItem('kanjiSprintPreferences',JSON.stringify(preferences));
+  localStorage.setItem('kanjiSprintPreferencesDirty','1');
+  schedulePreferenceSync();
+}
 function updateStreak(){ document.querySelector('#streakCount').textContent = stats.streak; }
+function updateCloudIndicator(){
+  if(!accountButton)return;
+  accountButton.textContent=cloudUser?(cloudStatus==='syncing'?'↻':'✓'):'☁';
+  accountButton.classList.toggle('connected',Boolean(cloudUser));
+  accountButton.title=cloudUser?(cloudStatus==='syncing'?'Synchronisation…':'Progression synchronisée'):'Connexion au cloud';
+}
 function shuffle(arr){ return [...arr].sort(() => Math.random() - .5); }
 function escapeHtml(value){ const d=document.createElement('div'); d.textContent=value; return d.innerHTML; }
 function dayKey(date=new Date()){
@@ -95,11 +126,178 @@ function speakJapanese(text){
   speechSynthesis.speak(utterance);
 }
 
+function catalogItem(row){
+  return {id:row.id,level:row.jlpt_level,kanji:row.kanji,word:row.word,reading:row.reading,romaji:row.romaji,meaning:row.meaning_fr,clue:row.clue_fr||''};
+}
+function reviewQueue(){
+  try { const value=JSON.parse(localStorage.getItem('kanjiSprintReviewQueue')||'[]');return Array.isArray(value)?value:[]; }
+  catch { return []; }
+}
+function saveReviewQueue(queue){localStorage.setItem('kanjiSprintReviewQueue',JSON.stringify(queue));}
+function makeReviewId(){
+  if(crypto.randomUUID)return crypto.randomUUID();
+  const bytes=crypto.getRandomValues(new Uint8Array(16));
+  bytes[6]=(bytes[6]&15)|64;bytes[8]=(bytes[8]&63)|128;
+  const hex=[...bytes].map(value=>value.toString(16).padStart(2,'0')).join('');
+  return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
+}
+function queueCloudReview(item,ok){
+  if(!cloudUser)return;
+  const queue=reviewQueue();
+  queue.push({id:makeReviewId(),vocabularyId:item.id||null,word:item.word,result:ok,mode:session?.mode||'quick'});
+  saveReviewQueue(queue);
+  flushReviewQueue();
+}
+async function flushReviewQueue(){
+  if(reviewFlushPromise)return reviewFlushPromise;
+  if(!supabase||!cloudUser||!navigator.onLine)return;
+  reviewFlushPromise=(async()=>{
+    if(!reviewQueue().length)return;
+    cloudStatus='syncing';updateCloudIndicator();
+    while(reviewQueue().length){
+      const review=reviewQueue()[0];
+      const vocabularyId=review.vocabularyId||items.find(item=>item.word===review.word)?.id;
+      if(!vocabularyId)break;
+      const {error}=await supabase.rpc('record_review',{
+        p_vocabulary_id:vocabularyId,p_result:review.result,p_mode:review.mode,p_client_event_id:review.id
+      });
+      if(error)break;
+      saveReviewQueue(reviewQueue().filter(item=>item.id!==review.id));
+    }
+    const pending=reviewQueue().length;
+    cloudStatus=pending?'error':'synced';
+    cloudMessage=pending?'Certaines révisions seront renvoyées automatiquement.':'';
+    updateCloudIndicator();
+    if(route==='account')renderAccount();
+  })();
+  try { await reviewFlushPromise; } finally { reviewFlushPromise=null; }
+}
+function schedulePreferenceSync(){
+  clearTimeout(preferenceSyncTimer);
+  if(!supabase||!cloudUser)return;
+  preferenceSyncTimer=setTimeout(syncPreferences,350);
+}
+async function syncPreferences(){
+  if(!supabase||!cloudUser||!navigator.onLine)return;
+  const {error}=await supabase.from('user_preferences').upsert({
+    user_id:cloudUser.id,level:preferences.level,session_length:Number(preferences.length)||5,daily_goal:10
+  });
+  if(!error)localStorage.removeItem('kanjiSprintPreferencesDirty');
+}
+function mergeProgress(rows){
+  const byId=new Map(rows.map(row=>[row.vocabulary_id,row]));
+  const merged={...stats.mastered};
+  for(const item of items){
+    const remote=byId.get(item.id);if(!remote)continue;
+    const local=merged[item.kanji]||{seen:0,correct:0};
+    merged[item.kanji]={seen:Math.max(local.seen||0,remote.seen||0),correct:Math.max(local.correct||0,remote.correct||0)};
+  }
+  stats.mastered=merged;
+  const values=Object.values(merged);
+  stats.total=values.reduce((sum,value)=>sum+(value.seen||0),0);
+  stats.correct=values.reduce((sum,value)=>sum+(value.correct||0),0);
+  saveStats();
+}
+async function migrateLocalProgress(remoteRows){
+  const remoteById=new Map(remoteRows.map(row=>[row.vocabulary_id,row]));
+  const payload=[];
+  for(const item of items){
+    const local=stats.mastered[item.kanji];
+    if(!item.id||!local?.seen)continue;
+    const remote=remoteById.get(item.id)||{seen:0,correct:0};
+    payload.push({
+      user_id:cloudUser.id,vocabulary_id:item.id,
+      seen:Math.max(local.seen||0,remote.seen||0),
+      correct:Math.max(local.correct||0,remote.correct||0)
+    });
+  }
+  if(payload.length){
+    const {error}=await supabase.from('user_progress').upsert(payload,{onConflict:'user_id,vocabulary_id'});
+    if(error)throw error;
+  }
+}
+async function synchronizeUser(){
+  if(!supabase||!cloudUser)return;
+  cloudStatus='syncing';cloudMessage='';updateCloudIndicator();
+  try {
+    const [{data:remoteRows,error:progressError},{data:remotePreferences,error:preferencesError}]=await Promise.all([
+      supabase.from('user_progress').select('vocabulary_id,seen,correct'),
+      supabase.from('user_preferences').select('level,session_length,daily_goal').maybeSingle()
+    ]);
+    if(progressError||preferencesError)throw progressError||preferencesError;
+    const migrationKey=`kanjiSprintMigrated:${cloudUser.id}`;
+    if(!localStorage.getItem(migrationKey)){
+      await migrateLocalProgress(remoteRows||[]);
+      localStorage.setItem(migrationKey,'1');
+      localStorage.setItem('kanjiSprintPreferencesDirty','1');
+    }
+    if(remotePreferences&&!localStorage.getItem('kanjiSprintPreferencesDirty')){
+      preferences={...preferences,level:remotePreferences.level,length:remotePreferences.session_length};
+      localStorage.setItem('kanjiSprintPreferences',JSON.stringify(preferences));
+    } else await syncPreferences();
+    const {data:latest,error:latestError}=await supabase.from('user_progress').select('vocabulary_id,seen,correct');
+    if(latestError)throw latestError;
+    mergeProgress(latest||[]);
+    await flushReviewQueue();
+    cloudStatus=reviewQueue().length?'error':'synced';
+  } catch(error){
+    cloudStatus='error';cloudMessage='La synchronisation reprendra automatiquement dès que possible.';
+    console.warn('Cloud sync unavailable',error.message);
+  }
+  updateCloudIndicator();
+  if(route==='account')renderAccount();
+}
+async function setCloudUser(user){
+  cloudUser=user||null;
+  cloudStatus=cloudUser?'syncing':'ready';
+  updateCloudIndicator();
+  if(cloudUser)await synchronizeUser();
+  if(route==='account')renderAccount();
+}
+async function loadCloudCatalog(){
+  if(!supabase||!navigator.onLine)return;
+  const {data,error}=await supabase.from('vocabulary').select('id,kanji,word,reading,romaji,meaning_fr,clue_fr,jlpt_level').eq('active',true).order('id');
+  if(!error&&data?.length){items=data.map(catalogItem);localStorage.setItem('kanjiSprintCatalog',JSON.stringify(items));}
+}
+async function initializeCloud(){
+  updateCloudIndicator();
+  if(!supabase)return;
+  await loadCloudCatalog();
+  const {data}=await supabase.auth.getSession();
+  await setCloudUser(data.session?.user||null);
+  supabase.auth.onAuthStateChange((_event,currentSession)=>{
+    setTimeout(()=>setCloudUser(currentSession?.user||null),0);
+  });
+}
+
 function go(next){
   route=next; session=null;
-  document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.go===(next==='progress'?'progress':next==='home'?'home':'quick')));
-  if(next==='home') renderHome(); else if(next==='progress') renderProgress(); else startQuiz(next);
+  const activeRoute=next==='progress'?'progress':next==='home'?'home':next==='account'?null:'quick';
+  document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.go===activeRoute));
+  if(next==='home')renderHome();else if(next==='progress')renderProgress();else if(next==='account')renderAccount();else startQuiz(next);
   window.scrollTo({top:0,behavior:'smooth'}); app.focus({preventScroll:true});
+}
+
+function renderAccount(){
+  const queued=reviewQueue().length;
+  if(cloudUser){
+    const status=cloudStatus==='syncing'?'Synchronisation en cours…':cloudStatus==='error'?'Synchronisation en attente':'Progression synchronisée';
+    app.innerHTML=`<section class="account-page"><p class="eyebrow">Compte</p><h1>Ton japonais,<br>sur tous tes appareils.</h1><div class="cloud-card connected-card"><div class="cloud-icon">✓</div><div><strong>${escapeHtml(cloudUser.email||'Compte connecté')}</strong><p>${status}${queued?` · ${queued} action${queued>1?'s':''} en attente`:''}</p></div></div>${cloudMessage?`<p class="cloud-notice">${escapeHtml(cloudMessage)}</p>`:''}<div class="account-actions"><button class="primary" data-sync-now>Synchroniser maintenant</button><button class="secondary" data-signout>Se déconnecter</button><button class="secondary" data-go="home">Retour à l’accueil</button></div><p class="privacy-note">Le catalogue reste disponible hors ligne. Tes résultats sont envoyés avec une connexion chiffrée et protégés par ton compte.</p></section>`;
+    return;
+  }
+  app.innerHTML=`<section class="account-page"><p class="eyebrow">Synchronisation cloud</p><h1>Retrouve tes progrès partout.</h1><p class="hero-copy">Entre ton adresse e-mail. Supabase t’enverra un lien sécurisé, sans mot de passe.</p><form class="login-card" id="loginForm"><label for="emailInput">Adresse e-mail</label><input class="answer-input" id="emailInput" name="email" type="email" autocomplete="email" required placeholder="toi@exemple.fr"><button class="primary" type="submit">Recevoir mon lien de connexion</button><p class="form-message" id="authMessage" aria-live="polite">${escapeHtml(cloudMessage)}</p></form><button class="secondary full-button" data-go="home">Continuer sans compte</button><p class="privacy-note">Sans compte, tes données restent uniquement sur cet appareil. À la première connexion, la progression locale est fusionnée avec le cloud.</p></section>`;
+  document.querySelector('#loginForm').addEventListener('submit',sendMagicLink);
+}
+
+async function sendMagicLink(event){
+  event.preventDefault();
+  const form=event.currentTarget,email=form.querySelector('[name="email"]').value.trim(),button=form.querySelector('button'),message=form.querySelector('#authMessage');
+  if(!supabase){message.textContent='La connexion cloud est momentanément indisponible.';return;}
+  button.disabled=true;message.textContent='Envoi en cours…';
+  const redirectTo=`${location.origin}${location.pathname}`;
+  const {error}=await supabase.auth.signInWithOtp({email,options:{emailRedirectTo:redirectTo}});
+  button.disabled=false;
+  message.textContent=error?`Impossible d’envoyer le lien : ${error.message}`:'Lien envoyé. Ouvre-le sur cet appareil pour te connecter.';
 }
 
 function renderHome(){
@@ -183,7 +381,7 @@ function record(item,ok){
   stats.total++; if(ok){stats.correct++;session.score++;}
   stats.mastered[item.kanji]=stats.mastered[item.kanji]||{seen:0,correct:0};
   stats.mastered[item.kanji].seen++; if(ok)stats.mastered[item.kanji].correct++;
-  bumpDaily(); saveStats();
+  bumpDaily();saveStats();queueCloudReview(item,ok);
 }
 function nextQuestion(){ session.index++;session.answered=false;if(session.index>=session.cards.length)finishSession();else renderQuestion(); }
 
@@ -209,10 +407,13 @@ document.addEventListener('click',e=>{
   const goButton=e.target.closest('[data-go]'); if(goButton){go(goButton.dataset.go);return;}
   const start=e.target.closest('[data-start]'); if(start){go(start.dataset.start);return;}
   const retry=e.target.closest('[data-retry]'); if(retry){startQuiz(retry.dataset.retry);}
+  const sync=e.target.closest('[data-sync-now]');if(sync){synchronizeUser();return;}
+  const signout=e.target.closest('[data-signout]');if(signout&&supabase){supabase.auth.signOut();return;}
 });
 
 window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();installPrompt=event;installButton.hidden=false;});
 installButton.addEventListener('click',async()=>{if(!installPrompt)return;await installPrompt.prompt();installPrompt=null;installButton.hidden=true;});
 window.addEventListener('appinstalled',()=>{installPrompt=null;installButton.hidden=true;});
+window.addEventListener('online',()=>{loadCloudCatalog().then(flushReviewQueue);schedulePreferenceSync();});
 if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').then(reg=>reg.update()).catch(()=>{}));
-updateStreak(); renderHome();
+updateStreak();renderHome();initializeCloud();

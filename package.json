@@ -1,0 +1,14 @@
+{
+  "name": "kanji-sprint",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "esbuild ./src/supabase.js --bundle --minify --format=iife --outfile=./dist/supabase.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.119.2"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}

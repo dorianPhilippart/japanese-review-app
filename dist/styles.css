@@ -37,6 +37,8 @@ button { color: inherit; }
 .brand-mark { width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center; color: white; background: var(--red); font-family: serif; font-size: 1.3rem; transform: rotate(-3deg); }
 .top-actions { display: flex; align-items: center; gap: 8px; }
 .install-pill { border: 0; border-radius: 99px; min-height: 38px; padding: 0 13px; background: var(--ink); color: white; font-weight: 800; font-size: .82rem; cursor: pointer; }
+.account-pill { width: 38px; height: 38px; border: 1px solid var(--line); border-radius: 50%; background: rgba(255,255,255,.72); color: var(--muted); font-weight: 900; cursor: pointer; }
+.account-pill.connected { border-color: #a8d2bd; background: #e2f3e9; color: var(--green); }
 .streak { display: flex; gap: 6px; align-items: center; background: rgba(255,255,255,.7); border: 1px solid var(--line); padding: 7px 11px; border-radius: 99px; }
 main { padding: 10px 20px 26px; outline: none; }
 
@@ -152,11 +154,24 @@ p { line-height: 1.55; }
 .mastery-pct { font-weight: 900; color: var(--green); }
 .full-button { width: 100%; }
 
+.account-page { padding-top: 8px; }
+.cloud-card, .login-card { margin: 24px 0 14px; padding: 20px; border: 1px solid var(--line); border-radius: 22px; background: var(--card); box-shadow: var(--shadow); }
+.cloud-card { display: grid; grid-template-columns: 48px 1fr; gap: 14px; align-items: center; }
+.cloud-card p { margin: 4px 0 0; color: var(--muted); font-size: .86rem; }
+.cloud-icon { width: 46px; height: 46px; display: grid; place-items: center; border-radius: 15px; background: #e2f3e9; color: var(--green); font-size: 1.3rem; font-weight: 900; }
+.login-card label { display: block; margin: 0 0 8px 3px; color: var(--muted); font-size: .82rem; font-weight: 800; }
+.login-card .primary { width: 100%; margin-top: 10px; }
+.form-message { min-height: 24px; margin: 12px 2px 0; color: var(--muted); font-size: .84rem; }
+.account-actions { display: grid; gap: 10px; margin-top: 16px; }
+.cloud-notice { padding: 12px 14px; border-radius: 14px; background: #fff0ce; color: #77540c; font-size: .86rem; }
+.privacy-note { margin-top: 20px; color: var(--muted); font-size: .8rem; }
+
 @media (min-width: 520px) {
   main { padding-left: 28px; padding-right: 28px; }
   .topbar { padding-left: 28px; padding-right: 28px; }
 }
 @media (max-width: 370px) {
+  .brand > span:last-child { display: none; }
   .study-config { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition-duration: .01ms !important; } }
