@@ -415,5 +415,5 @@ window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();ins
 installButton.addEventListener('click',async()=>{if(!installPrompt)return;await installPrompt.prompt();installPrompt=null;installButton.hidden=true;});
 window.addEventListener('appinstalled',()=>{installPrompt=null;installButton.hidden=true;});
 window.addEventListener('online',()=>{loadCloudCatalog().then(flushReviewQueue);schedulePreferenceSync();});
-if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').then(reg=>reg.update()).catch(()=>{}));
+if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(reg=>reg.update()).catch(()=>{}));
 updateStreak();renderHome();initializeCloud();

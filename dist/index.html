@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=5">
   <title>Kanji Sprint</title>
 </head>
 <body>
@@ -37,8 +37,18 @@
       <button class="nav-item" data-go="progress"><span class="nav-icon">◔</span><span>Progrès</span></button>
     </nav>
   </div>
-  <script src="supabase.js"></script>
-  <script src="config.js"></script>
-  <script src="app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (refreshing) return;
+        refreshing = true;
+        location.reload();
+      });
+    }
+  </script>
+  <script src="supabase.js?v=5"></script>
+  <script src="config.js?v=5"></script>
+  <script src="app.js?v=5"></script>
 </body>
 </html>
