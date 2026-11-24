@@ -53,7 +53,7 @@ function loadCachedCatalog(){
 let items=loadCachedCatalog()||fallbackItems;
 
 const defaults = { total:0, correct:0, sessions:0, streak:0, lastDay:'', mastered:{} };
-const preferenceDefaults = { level:'all', length:5 };
+const preferenceDefaults = { level:'all', length:5, dailyGoal:10 };
 let stats = loadObject('kanjiSprintStats', defaults);
 let preferences = loadObject('kanjiSprintPreferences', preferenceDefaults);
 let route = 'home';
@@ -73,6 +73,8 @@ let cloudStatus=supabase?'connecting':'offline';
 let cloudMessage='';
 let preferenceSyncTimer=null;
 let reviewFlushPromise=null;
+let libraryQuery='';
+let libraryLevel='all';
 
 function loadObject(key, fallback){
   try { return { ...fallback, ...JSON.parse(localStorage.getItem(key) || '{}') }; }
@@ -93,6 +95,7 @@ function updateCloudIndicator(){
 }
 function shuffle(arr){ return [...arr].sort(() => Math.random() - .5); }
 function escapeHtml(value){ const d=document.createElement('div'); d.textContent=value; return d.innerHTML; }
+function escapeAttribute(value){return escapeHtml(value).replaceAll('"','&quot;').replaceAll("'",'&#39;');}
 function dayKey(date=new Date()){
   const y=date.getFullYear(), m=String(date.getMonth()+1).padStart(2,'0'), d=String(date.getDate()).padStart(2,'0');
   return `${y}-${m}-${d}`;
@@ -110,8 +113,20 @@ function sampleExcept(current, count=3){
   return shuffle(pool.length>=count ? pool : items.filter(x=>x.word!==current.word)).slice(0,count);
 }
 function accuracy(item){ const m=stats.mastered[item.kanji]; return m?.seen ? m.correct/m.seen : .55; }
+function dueItems(){
+  const now=Date.now();
+  return availableItems().filter(item=>{
+    const progress=stats.mastered[item.kanji];
+    return progress?.seen&&progress.dueAt&&new Date(progress.dueAt).getTime()<=now;
+  });
+}
 function selectCards(mode){
   const pool=availableItems(), length=Math.min(Number(preferences.length)||5,pool.length);
+  if(mode==='due'){
+    const due=shuffle(dueItems());
+    const fill=[...pool].filter(item=>!due.some(card=>card.word===item.word)).sort((a,b)=>accuracy(a)-accuracy(b));
+    return [...due,...fill].slice(0,length);
+  }
   if(mode==='weak') return [...pool].sort((a,b)=>accuracy(a)-accuracy(b) || (stats.mastered[b.kanji]?.seen||0)-(stats.mastered[a.kanji]?.seen||0)).slice(0,length);
   if(mode==='quick') return [...pool].sort((a,b)=>(accuracy(a)+Math.random()*.35)-(accuracy(b)+Math.random()*.35)).slice(0,length);
   return shuffle(pool).slice(0,length);
@@ -180,7 +195,7 @@ function schedulePreferenceSync(){
 async function syncPreferences(){
   if(!supabase||!cloudUser||!navigator.onLine)return;
   const {error}=await supabase.from('user_preferences').upsert({
-    user_id:cloudUser.id,level:preferences.level,session_length:Number(preferences.length)||5,daily_goal:10
+    user_id:cloudUser.id,level:preferences.level,session_length:Number(preferences.length)||5,daily_goal:Number(preferences.dailyGoal)||10
   });
   if(!error)localStorage.removeItem('kanjiSprintPreferencesDirty');
 }
@@ -190,7 +205,14 @@ function mergeProgress(rows){
   for(const item of items){
     const remote=byId.get(item.id);if(!remote)continue;
     const local=merged[item.kanji]||{seen:0,correct:0};
-    merged[item.kanji]={seen:Math.max(local.seen||0,remote.seen||0),correct:Math.max(local.correct||0,remote.correct||0)};
+    merged[item.kanji]={
+      ...local,
+      seen:Math.max(local.seen||0,remote.seen||0),
+      correct:Math.max(local.correct||0,remote.correct||0),
+      dueAt:remote.due_at||local.dueAt,
+      intervalDays:remote.interval_days??local.intervalDays??0,
+      lastReviewedAt:remote.last_reviewed_at||local.lastReviewedAt
+    };
   }
   stats.mastered=merged;
   const values=Object.values(merged);
@@ -221,7 +243,7 @@ async function synchronizeUser(){
   cloudStatus='syncing';cloudMessage='';updateCloudIndicator();
   try {
     const [{data:remoteRows,error:progressError},{data:remotePreferences,error:preferencesError}]=await Promise.all([
-      supabase.from('user_progress').select('vocabulary_id,seen,correct'),
+      supabase.from('user_progress').select('vocabulary_id,seen,correct,due_at,interval_days,last_reviewed_at'),
       supabase.from('user_preferences').select('level,session_length,daily_goal').maybeSingle()
     ]);
     if(progressError||preferencesError)throw progressError||preferencesError;
@@ -232,10 +254,10 @@ async function synchronizeUser(){
       localStorage.setItem('kanjiSprintPreferencesDirty','1');
     }
     if(remotePreferences&&!localStorage.getItem('kanjiSprintPreferencesDirty')){
-      preferences={...preferences,level:remotePreferences.level,length:remotePreferences.session_length};
+      preferences={...preferences,level:remotePreferences.level,length:remotePreferences.session_length,dailyGoal:remotePreferences.daily_goal};
       localStorage.setItem('kanjiSprintPreferences',JSON.stringify(preferences));
     } else await syncPreferences();
-    const {data:latest,error:latestError}=await supabase.from('user_progress').select('vocabulary_id,seen,correct');
+    const {data:latest,error:latestError}=await supabase.from('user_progress').select('vocabulary_id,seen,correct,due_at,interval_days,last_reviewed_at');
     if(latestError)throw latestError;
     mergeProgress(latest||[]);
     await flushReviewQueue();
@@ -272,9 +294,9 @@ async function initializeCloud(){
 
 function go(next){
   route=next; session=null;
-  const activeRoute=next==='progress'?'progress':next==='home'?'home':next==='account'?null:'quick';
+  const activeRoute=['home','progress','library'].includes(next)?next:next==='account'?null:'quick';
   document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.go===activeRoute));
-  if(next==='home')renderHome();else if(next==='progress')renderProgress();else if(next==='account')renderAccount();else startQuiz(next);
+  if(next==='home')renderHome();else if(next==='progress')renderProgress();else if(next==='library')renderLibrary();else if(next==='account')renderAccount();else startQuiz(next);
   window.scrollTo({top:0,behavior:'smooth'}); app.focus({preventScroll:true});
 }
 
@@ -301,19 +323,21 @@ async function sendMagicLink(event){
 }
 
 function renderHome(){
-  const daily=getDaily(), todayDone=Math.min(10,daily.count), levelName=preferences.level==='all'?'N5 + N4':preferences.level;
+  const daily=getDaily(),goal=Number(preferences.dailyGoal)||10,todayDone=Math.min(goal,daily.count),dueCount=dueItems().length,levelName=preferences.level==='all'?'N5 + N4':preferences.level;
   app.innerHTML=`<section>
     <p class="eyebrow">毎日、少しずつ</p>
     <h1>Un peu de japonais,<br>tous les jours.</h1>
     <p class="hero-copy">Des sessions courtes qui s’adaptent à tes réponses et renforcent tes cartes les plus fragiles.</p>
     <div class="daily-card">
-      <div class="daily-top"><div><span class="daily-label">Objectif du jour · ${levelName}</span><h2>${todayDone>=10?'Objectif atteint. よくできました！':`${10-todayDone} cartes à réviser`}</h2></div><strong>${todayDone}/10</strong></div>
-      <div class="progress-track"><div class="progress-fill" style="width:${todayDone*10}%"></div></div>
+      <div class="daily-top"><div><span class="daily-label">Objectif du jour · ${levelName}</span><h2>${todayDone>=goal?'Objectif atteint. よくできました！':`${goal-todayDone} cartes à réviser`}</h2></div><strong>${todayDone}/${goal}</strong></div>
+      <div class="progress-track"><div class="progress-fill" style="width:${Math.round(todayDone/goal*100)}%"></div></div>
       <button class="primary" data-start="quick">${todayDone?'Continuer la session':'Lancer le quiz rapide'}</button>
     </div>
+    ${cloudUser?`<button class="due-banner" data-start="due"><span class="due-icon">時</span><span><strong>${dueCount?`${dueCount} révision${dueCount>1?'s':''} due${dueCount>1?'s':''}`:'Tout est à jour'}</strong><small>${dueCount?'Commencer par les cartes arrivées à échéance':'La prochaine session consolidera de nouvelles cartes'}</small></span><b>›</b></button>`:''}
     <div class="study-config" aria-label="Réglages de la session">
       <div class="config-group"><span>Niveau</span><div class="segmented">${['all','N5','N4'].map(level=>`<button class="config-chip ${preferences.level===level?'active':''}" data-level="${level}">${level==='all'?'Tous':level}</button>`).join('')}</div></div>
       <div class="config-group"><span>Cartes</span><div class="segmented">${[5,10,20].map(length=>`<button class="config-chip ${Number(preferences.length)===length?'active':''}" data-length="${length}">${length}</button>`).join('')}</div></div>
+      <div class="config-group goal-config"><span>Objectif quotidien</span><div class="segmented">${[5,10,20].map(goalValue=>`<button class="config-chip ${goal===goalValue?'active':''}" data-goal="${goalValue}">${goalValue}</button>`).join('')}</div></div>
     </div>
     <div class="section-title"><h2>Choisir un exercice</h2><span>${preferences.length} cartes</span></div>
     <div class="mode-grid">
@@ -330,7 +354,7 @@ function startQuiz(mode){ session={mode,cards:selectCards(mode),index:0,score:0,
 
 function renderQuestion(){
   const s=session,item=s.cards[s.index],progress=(s.index/s.cards.length)*100;
-  const names={recognition:'Reconnaissance',typing:'Saisie',mcq:'QCM',quick:'Quiz rapide',weak:'Révision ciblée'};
+  const names={recognition:'Reconnaissance',typing:'Saisie',mcq:'QCM',quick:'Quiz rapide',weak:'Révision ciblée',due:'Révisions dues'};
   app.innerHTML=`<div class="quiz-head"><button data-go="home" aria-label="Quitter">×</button><div class="quiz-meta"><strong>${names[s.mode]}</strong><small>${s.index+1} sur ${s.cards.length} · ${item.level}</small></div><div class="score-pill">${s.score}</div></div><div class="quiz-progress"><div style="width:${progress}%"></div></div><div id="questionArea"></div>`;
   const area=document.querySelector('#questionArea');
   if(s.mode==='typing') renderTyping(area,item); else if(s.mode==='quick'||s.mode==='weak') renderFlash(area,item); else renderChoices(area,item,s.mode);
@@ -380,7 +404,11 @@ function renderFlash(area,item){
 function record(item,ok){
   stats.total++; if(ok){stats.correct++;session.score++;}
   stats.mastered[item.kanji]=stats.mastered[item.kanji]||{seen:0,correct:0};
-  stats.mastered[item.kanji].seen++; if(ok)stats.mastered[item.kanji].correct++;
+  const progress=stats.mastered[item.kanji];
+  progress.seen++;if(ok)progress.correct++;
+  progress.intervalDays=ok?Math.max(1,(progress.intervalDays||0)*2):0;
+  progress.lastReviewedAt=new Date().toISOString();
+  progress.dueAt=new Date(Date.now()+(ok?progress.intervalDays*86400000:600000)).toISOString();
   bumpDaily();saveStats();queueCloudReview(item,ok);
 }
 function nextQuestion(){ session.index++;session.answered=false;if(session.index>=session.cards.length)finishSession();else renderQuestion(); }
@@ -400,10 +428,36 @@ function renderProgress(){
   app.innerHTML=`<section><p class="eyebrow">Ton parcours</p><h1>Progrès</h1><p class="hero-copy">Chaque petite session compte. La révision ciblée utilise ces résultats pour choisir tes prochaines cartes.</p><div class="stats-grid"><div class="stat-card"><strong>${success}%</strong><span>de réussite</span></div><div class="stat-card"><strong>${stats.sessions}</strong><span>sessions</span></div><div class="stat-card"><strong>${stats.total}</strong><span>cartes vues</span></div><div class="stat-card"><strong>${stats.streak} j</strong><span>série actuelle</span></div></div>${mastery.length?`<button class="primary full-button" data-start="weak">Travailler mes cartes faibles</button>`:''}<div class="section-title"><h2>Kanji travaillés</h2><span>${mastery.length}</span></div>${mastery.length?`<div class="mastery-list">${mastery.map(([k,v])=>{const item=items.find(x=>x.kanji===k);return `<div class="mastery-row"><div class="mastery-kanji">${escapeHtml(k)}</div><div><strong>${escapeHtml(item?.clue||'Kanji')}</strong><small>${v.seen} révision${v.seen>1?'s':''} · ${item?.level||''}</small></div><span class="mastery-pct">${Math.round(v.correct/v.seen*100)}%</span></div>`;}).join('')}</div>`:`<div class="prompt-card"><div class="jp-large">始</div><p class="muted">Lance ton premier quiz pour voir tes progrès ici.</p><button class="primary" data-start="quick">Commencer</button></div>`}</section>`;
 }
 
+function renderLibrary(){
+  app.innerHTML=`<section><p class="eyebrow">${items.length} cartes disponibles</p><h1>Bibliothèque</h1><p class="hero-copy">Recherche un mot, une lecture, un sens ou un kanji et écoute sa prononciation.</p><div class="library-tools"><input class="library-search" id="librarySearch" type="search" placeholder="Ex. eau, みず, 水…" aria-label="Rechercher dans les cartes"><div class="segmented library-levels">${['all','N5','N4'].map(level=>`<button class="config-chip ${libraryLevel===level?'active':''}" data-library-level="${level}">${level==='all'?'Tous':level}</button>`).join('')}</div></div><div class="catalog-summary" id="catalogSummary"></div><div class="catalog-list" id="catalogList"></div></section>`;
+  const input=document.querySelector('#librarySearch');
+  input.value=libraryQuery;
+  input.addEventListener('input',()=>{libraryQuery=input.value;renderLibraryResults();});
+  renderLibraryResults();
+}
+
+function renderLibraryResults(){
+  const list=document.querySelector('#catalogList'),summary=document.querySelector('#catalogSummary');
+  if(!list||!summary)return;
+  const query=libraryQuery.trim().toLocaleLowerCase('fr');
+  const filtered=items.filter(item=>{
+    if(libraryLevel!=='all'&&item.level!==libraryLevel)return false;
+    if(!query)return true;
+    return [item.kanji,item.word,item.reading,item.romaji,item.meaning,item.clue].some(value=>(value||'').toLocaleLowerCase('fr').includes(query));
+  });
+  summary.textContent=`${filtered.length} carte${filtered.length>1?'s':''} · ${items.filter(item=>item.level==='N5').length} N5 · ${items.filter(item=>item.level==='N4').length} N4`;
+  list.innerHTML=filtered.length?filtered.map(item=>{
+    const progress=stats.mastered[item.kanji],success=progress?.seen?Math.round(progress.correct/progress.seen*100):null;
+    return `<article class="catalog-card"><div class="catalog-kanji">${escapeHtml(item.kanji)}</div><div class="catalog-copy"><div><strong>${escapeHtml(item.word)}</strong><span>${escapeHtml(item.reading)} · ${escapeHtml(item.romaji)}</span></div><p>${escapeHtml(item.meaning)}</p><small>${item.level}${success===null?' · Nouvelle':` · ${success}% · ${progress.seen} vue${progress.seen>1?'s':''}`}</small></div><button class="catalog-sound" data-speak="${escapeAttribute(item.word)}" aria-label="Écouter ${escapeAttribute(item.word)}">♪</button></article>`;
+  }).join(''):`<div class="empty-library"><strong>Aucune carte trouvée</strong><p>Essaie un autre mot ou change de niveau.</p></div>`;
+}
+
 document.addEventListener('click',e=>{
   const speaker=e.target.closest('[data-speak]'); if(speaker){e.stopPropagation();speakJapanese(speaker.dataset.speak);return;}
   const level=e.target.closest('[data-level]'); if(level){preferences.level=level.dataset.level;savePreferences();renderHome();return;}
   const length=e.target.closest('[data-length]'); if(length){preferences.length=Number(length.dataset.length);savePreferences();renderHome();return;}
+  const goal=e.target.closest('[data-goal]');if(goal){preferences.dailyGoal=Number(goal.dataset.goal);savePreferences();renderHome();return;}
+  const libraryFilter=e.target.closest('[data-library-level]');if(libraryFilter){libraryLevel=libraryFilter.dataset.libraryLevel;renderLibrary();return;}
   const goButton=e.target.closest('[data-go]'); if(goButton){go(goButton.dataset.go);return;}
   const start=e.target.closest('[data-start]'); if(start){go(start.dataset.start);return;}
   const retry=e.target.closest('[data-retry]'); if(retry){startQuiz(retry.dataset.retry);}

@@ -1,5 +1,5 @@
-const CACHE='kanji-sprint-v5';
-const ASSETS=['./','index.html','styles.css?v=5','supabase.js?v=5','config.js?v=5','app.js?v=5','manifest.webmanifest','icon.svg','icon-192.png','icon-512.png','apple-touch-icon.png'];
+const CACHE='kanji-sprint-v6';
+const ASSETS=['./','index.html','styles.css?v=6','supabase.js?v=6','config.js?v=6','app.js?v=6','manifest.webmanifest','icon.svg','icon-192.png','icon-512.png','apple-touch-icon.png'];
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
 self.addEventListener('fetch',event=>{
