@@ -55,6 +55,7 @@ create table if not exists public.review_events (
 );
 
 create index if not exists review_events_user_date_idx on public.review_events (user_id, reviewed_at desc);
+create index if not exists review_events_vocabulary_idx on public.review_events (vocabulary_id);
 
 create or replace function public.set_updated_at()
 returns trigger language plpgsql set search_path = '' as $$
@@ -83,10 +84,12 @@ revoke all on table public.vocabulary from anon, authenticated;
 revoke all on table public.user_preferences from anon, authenticated;
 revoke all on table public.user_progress from anon, authenticated;
 revoke all on table public.review_events from anon, authenticated;
+grant usage on schema public to anon, authenticated;
 grant select on table public.vocabulary to anon, authenticated;
 grant select, insert, update, delete on table public.user_preferences to authenticated;
 grant select, insert, update, delete on table public.user_progress to authenticated;
 grant select, insert, delete on table public.review_events to authenticated;
+grant usage, select on sequence public.review_events_id_seq to authenticated;
 
 drop policy if exists "Active vocabulary is readable" on public.vocabulary;
 create policy "Active vocabulary is readable" on public.vocabulary for select
