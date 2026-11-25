@@ -9,17 +9,17 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Kanji Sprint">
-  <link rel="manifest" href="manifest.webmanifest">
-  <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="apple-touch-icon.png">
-  <link rel="stylesheet" href="styles.css?v=6">
+  <link rel="manifest" href="manifest.webmanifest?v=7">
+  <link rel="icon" href="icon.svg?v=7" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png?v=7">
+  <link rel="stylesheet" href="styles.css?v=7">
   <title>Kanji Sprint</title>
 </head>
 <body>
   <div class="app-shell">
     <header class="topbar">
       <button class="brand" data-go="home" aria-label="Accueil Kanji Sprint">
-        <span class="brand-mark">間</span>
+        <img class="brand-mark" src="icon.svg?v=7" alt="" width="36" height="36">
         <span>Kanji Sprint</span>
       </button>
       <div class="top-actions">
@@ -48,8 +48,9 @@
       });
     }
   </script>
-  <script src="supabase.js?v=6"></script>
-  <script src="config.js?v=6"></script>
-  <script src="app.js?v=6"></script>
+  <script src="supabase.js?v=7"></script>
+  <script src="config.js?v=7"></script>
+  <script src="extra-cards.js?v=7"></script>
+  <script src="app.js?v=7"></script>
 </body>
 </html>

@@ -1,6 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="118" fill="#e84f3b"/>
-  <circle cx="256" cy="256" r="174" fill="#fffdf8"/>
-  <text x="256" y="334" text-anchor="middle" font-family="serif" font-size="250" font-weight="700" fill="#1d1c1a">間</text>
-  <path d="M390 118l14 30 30 14-30 14-14 30-14-30-30-14 30-14z" fill="#f5c84b"/>
+  <rect width="512" height="512" fill="#25242c"/>
+  <circle cx="328" cy="170" r="49" fill="#ff7664"/>
+  <path d="M128 192 256 229 384 192V320L256 361 128 320Z" fill="#fff7e8"/>
+  <path d="M256 229V361M157 237l67 20m-67 20 67 20m64-40 67-20m-67 60 67-20"
+        fill="none" stroke="#25242c" stroke-width="13" stroke-linecap="round"/>
 </svg>

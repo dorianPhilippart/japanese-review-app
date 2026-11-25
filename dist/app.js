@@ -50,7 +50,22 @@ function loadCachedCatalog(){
   } catch { return null; }
 }
 
-let items=loadCachedCatalog()||fallbackItems;
+const bundledCatalog = [...fallbackItems, ...extraCards];
+const cachedCatalog = loadCachedCatalog() || [];
+let items = mergeCatalog(cachedCatalog);
+
+function mergeCatalog(cloudCards) {
+  const byWord = new Map(bundledCatalog.map(card => [card.word, card]));
+  for (const card of cloudCards) {
+    const bundled = byWord.get(card.word);
+    byWord.set(card.word, { ...bundled, ...card,
+      example: card.example || bundled?.example,
+      exampleReading: card.exampleReading || bundled?.exampleReading,
+      exampleMeaning: card.exampleMeaning || bundled?.exampleMeaning
+    });
+  }
+  return [...byWord.values()];
+}
 
 const defaults = { total:0, correct:0, sessions:0, streak:0, lastDay:'', mastered:{} };
 const preferenceDefaults = { level:'all', length:5, dailyGoal:10 };
@@ -75,6 +90,7 @@ let preferenceSyncTimer=null;
 let reviewFlushPromise=null;
 let libraryQuery='';
 let libraryLevel='all';
+let automaticAudio = loadObject('kanjiSprintAudio', { enabled: true }).enabled;
 
 function loadObject(key, fallback){
   try { return { ...fallback, ...JSON.parse(localStorage.getItem(key) || '{}') }; }
@@ -141,8 +157,28 @@ function speakJapanese(text){
   speechSynthesis.speak(utterance);
 }
 
+function playCardAudio(item) {
+  if (automaticAudio) speakJapanese(item.reading);
+}
+
+function audioButton(text, label = 'Écouter') {
+  return `<button type="button" class="sound-button" data-speak="${escapeAttribute(text)}" aria-label="${label}">♪ ${label}</button>`;
+}
+
+function usageExample(item, withAudio = false) {
+  if (!item.example) return '';
+  return `<div class="usage-example">
+    <span class="usage-label">En contexte</span>
+    <strong lang="ja">${escapeHtml(item.example)}</strong>
+    <span lang="ja">${escapeHtml(item.exampleReading || '')}</span>
+    <span>${escapeHtml(item.exampleMeaning || '')}</span>
+    ${withAudio ? audioButton(item.example, 'Écouter la phrase') : ''}
+  </div>`;
+}
+
 function catalogItem(row){
-  return {id:row.id,level:row.jlpt_level,kanji:row.kanji,word:row.word,reading:row.reading,romaji:row.romaji,meaning:row.meaning_fr,clue:row.clue_fr||''};
+  return {id:row.id,level:row.jlpt_level,kanji:row.kanji,word:row.word,reading:row.reading,romaji:row.romaji,meaning:row.meaning_fr,clue:row.clue_fr||'',
+    example:row.example_jp,exampleReading:row.example_reading,exampleMeaning:row.example_fr};
 }
 function reviewQueue(){
   try { const value=JSON.parse(localStorage.getItem('kanjiSprintReviewQueue')||'[]');return Array.isArray(value)?value:[]; }
@@ -278,8 +314,13 @@ async function setCloudUser(user){
 }
 async function loadCloudCatalog(){
   if(!supabase||!navigator.onLine)return;
-  const {data,error}=await supabase.from('vocabulary').select('id,kanji,word,reading,romaji,meaning_fr,clue_fr,jlpt_level').eq('active',true).order('id');
-  if(!error&&data?.length){items=data.map(catalogItem);localStorage.setItem('kanjiSprintCatalog',JSON.stringify(items));}
+  const {data,error}=await supabase.from('vocabulary').select('id,kanji,word,reading,romaji,meaning_fr,clue_fr,jlpt_level,example_jp,example_reading,example_fr').eq('active',true).order('id');
+  if (!error && data?.length) {
+    const catalog = data.map(catalogItem);
+    items = catalog;
+    localStorage.setItem('kanjiSprintCatalog', JSON.stringify(catalog));
+    if (route === 'library') renderLibraryResults();
+  }
 }
 async function initializeCloud(){
   updateCloudIndicator();
@@ -338,6 +379,7 @@ function renderHome(){
       <div class="config-group"><span>Niveau</span><div class="segmented">${['all','N5','N4'].map(level=>`<button class="config-chip ${preferences.level===level?'active':''}" data-level="${level}">${level==='all'?'Tous':level}</button>`).join('')}</div></div>
       <div class="config-group"><span>Cartes</span><div class="segmented">${[5,10,20].map(length=>`<button class="config-chip ${Number(preferences.length)===length?'active':''}" data-length="${length}">${length}</button>`).join('')}</div></div>
       <div class="config-group goal-config"><span>Objectif quotidien</span><div class="segmented">${[5,10,20].map(goalValue=>`<button class="config-chip ${goal===goalValue?'active':''}" data-goal="${goalValue}">${goalValue}</button>`).join('')}</div></div>
+      <label class="audio-setting"><input type="checkbox" id="automaticAudio" ${automaticAudio ? 'checked' : ''}> Prononciation automatique</label>
     </div>
     <div class="section-title"><h2>Choisir un exercice</h2><span>${preferences.length} cartes</span></div>
     <div class="mode-grid">
@@ -357,13 +399,16 @@ function renderQuestion(){
   const names={recognition:'Reconnaissance',typing:'Saisie',mcq:'QCM',quick:'Quiz rapide',weak:'Révision ciblée',due:'Révisions dues'};
   app.innerHTML=`<div class="quiz-head"><button data-go="home" aria-label="Quitter">×</button><div class="quiz-meta"><strong>${names[s.mode]}</strong><small>${s.index+1} sur ${s.cards.length} · ${item.level}</small></div><div class="score-pill">${s.score}</div></div><div class="quiz-progress"><div style="width:${progress}%"></div></div><div id="questionArea"></div>`;
   const area=document.querySelector('#questionArea');
-  if(s.mode==='typing') renderTyping(area,item); else if(s.mode==='quick'||s.mode==='weak') renderFlash(area,item); else renderChoices(area,item,s.mode);
+  if (s.mode === 'typing') renderTyping(area,item);
+  else if (['quick','weak','due'].includes(s.mode)) renderFlash(area,item);
+  else renderChoices(area,item,s.mode);
+  if (s.mode === 'recognition') playCardAudio(item);
 }
 
 function renderChoices(area,item,mode){
   const options=shuffle([item,...sampleExcept(item)]),label=mode==='recognition'?'Que signifie ce mot ?':'Quelle est sa lecture ?';
-  const audio=mode==='recognition'?`<button class="sound-button" data-speak="${escapeHtml(item.word)}" aria-label="Écouter la prononciation">♪ Écouter</button>`:'';
-  area.innerHTML=`<div class="prompt-card"><span class="level-badge">${item.level}</span><span class="prompt-label">${label}</span><div class="word-large">${item.word}</div>${mode==='mcq'?`<div class="detail">${item.meaning}</div>`:''}${audio}</div><div class="choices">${options.map(o=>`<button class="choice" data-answer="${escapeHtml(o.word)}">${mode==='recognition'?o.meaning:`${o.reading} · ${o.romaji}`}</button>`).join('')}</div><div class="feedback" id="feedback" aria-live="polite"></div>`;
+  const audio = mode === 'recognition' ? audioButton(item.reading) : '';
+  area.innerHTML=`<div class="prompt-card"><span class="level-badge">${item.level}</span><span class="prompt-label">${label}</span><div class="word-large" lang="ja">${escapeHtml(item.word)}</div>${mode==='mcq'?`<div class="detail">${escapeHtml(item.meaning)}</div>`:''}${audio}</div><div class="choices">${options.map(o=>`<button class="choice" data-answer="${escapeAttribute(o.word)}">${mode==='recognition'?escapeHtml(o.meaning):`<span lang="ja">${escapeHtml(o.reading)}</span> · ${escapeHtml(o.romaji)}`}</button>`).join('')}</div><div class="feedback" id="feedback" aria-live="polite"></div>`;
   area.querySelectorAll('.choice').forEach(b=>b.addEventListener('click',()=>answerChoice(b,item)));
 }
 
@@ -373,11 +418,13 @@ function answerChoice(button,item){
   document.querySelectorAll('.choice').forEach(b=>{b.disabled=true;if(b.dataset.answer===item.word)b.classList.add('correct');});
   const feedback=document.querySelector('#feedback'); feedback.className=`feedback ${ok?'good':'bad'}`;
   feedback.textContent=ok?'正解！ Bonne réponse.':`Pas tout à fait — ${item.reading} · ${item.meaning}`;
-  record(item,ok); setTimeout(nextQuestion,ok?850:1450);
+  record(item,ok);
+  if (session.mode === 'mcq') showReadingFeedback(item);
+  else advanceAfter(ok ? 850 : 1450);
 }
 
 function renderTyping(area,item){
-  area.innerHTML=`<div class="prompt-card"><span class="level-badge">${item.level}</span><span class="prompt-label">Écris la lecture en hiragana</span><div class="word-large">${item.word}</div><div class="detail">${item.meaning}</div></div><form class="input-wrap" id="typingForm"><input class="answer-input" id="answerInput" lang="ja" autocomplete="off" autocorrect="off" placeholder="Ex. みず" aria-label="Lecture en hiragana"><button class="primary" type="submit">Valider</button></form><p class="hint">Clavier japonais recommandé · le rōmaji est aussi accepté</p><div class="feedback" id="feedback" aria-live="polite"></div>`;
+  area.innerHTML=`<div class="prompt-card"><span class="level-badge">${item.level}</span><span class="prompt-label">Écris la lecture en hiragana</span><div class="word-large" lang="ja">${escapeHtml(item.word)}</div><div class="detail">${escapeHtml(item.meaning)}</div></div><form class="input-wrap" id="typingForm"><input class="answer-input" id="answerInput" lang="ja" autocomplete="off" autocorrect="off" placeholder="Ex. みず" aria-label="Lecture en hiragana"><button class="primary" type="submit">Valider</button></form><p class="hint">Clavier japonais recommandé · le rōmaji est aussi accepté</p><div class="feedback" id="feedback" aria-live="polite"></div>`;
   document.querySelector('#typingForm').addEventListener('submit',e=>{e.preventDefault();answerTyping(item);});
   setTimeout(()=>document.querySelector('#answerInput')?.focus(),100);
 }
@@ -389,16 +436,38 @@ function answerTyping(item){
   input.disabled=true; input.style.borderColor=ok?'var(--green)':'var(--red)';
   const feedback=document.querySelector('#feedback'); feedback.className=`feedback ${ok?'good':'bad'}`;
   feedback.textContent=ok?'正解！ Lecture correcte.':`Réponse : ${item.reading} (${item.romaji})`;
-  record(item,ok); setTimeout(nextQuestion,ok?900:1600);
+  record(item,ok);
+  showReadingFeedback(item);
+}
+
+function showReadingFeedback(item) {
+  playCardAudio(item);
+  const controls = document.createElement('div');
+  controls.className = 'reading-actions';
+  controls.innerHTML = `${audioButton(item.reading)}<button type="button" class="secondary">Suivant</button>`;
+  controls.querySelector('.secondary').addEventListener('click', nextQuestion);
+  document.querySelector('#feedback').after(controls);
+}
+
+function advanceAfter(delay) {
+  const currentSession = session;
+  setTimeout(() => {
+    if (session === currentSession) nextQuestion();
+  }, delay);
 }
 
 function renderFlash(area,item){
-  area.innerHTML=`<div class="flashcard" id="flashcard" role="button" tabindex="0" aria-label="Retourner la carte"><div class="flash-inner"><div class="flash-face"><span class="level-badge">${item.level}</span><span class="prompt-label">Quel est ce mot ?</span><div class="word-large">${item.word}</div><button class="sound-button" data-speak="${escapeHtml(item.word)}" aria-label="Écouter la prononciation">♪ Écouter</button><span class="tap-hint">Toucher la carte pour révéler</span></div><div class="flash-face flash-back"><span class="level-badge dark">${item.level}</span><div class="reading">${item.reading} · ${item.romaji}</div><div class="meaning">${item.meaning}</div><p class="detail">Kanji : ${item.kanji} — ${item.clue}</p><span class="tap-hint">Évalue ta réponse</span></div></div></div><div class="rate-row" id="rateRow" hidden><button class="again" data-known="false">À revoir</button><button class="know" data-known="true">Je savais</button></div>`;
+  area.innerHTML=`<div class="flashcard" id="flashcard" role="button" tabindex="0" aria-label="Retourner la carte"><div class="flash-inner"><div class="flash-face"><span class="level-badge">${item.level}</span><span class="prompt-label">Quel est ce mot ?</span><div class="word-large" lang="ja">${escapeHtml(item.word)}</div><span class="tap-hint">Toucher la carte pour révéler</span></div><div class="flash-face flash-back"><span class="level-badge dark">${item.level}</span><div class="reading"><span lang="ja">${escapeHtml(item.reading)}</span> · ${escapeHtml(item.romaji)}</div><div class="meaning">${escapeHtml(item.meaning)}</div><p class="detail">Kanji : <span lang="ja">${escapeHtml(item.kanji)}</span> — ${escapeHtml(item.clue)}</p>${usageExample(item)}<span class="tap-hint">Évalue ta réponse</span></div></div></div><div class="rate-row" id="rateRow" hidden>${audioButton(item.reading, 'Réécouter le mot')}<button class="again" data-known="false">À revoir</button><button class="know" data-known="true">Je savais</button></div>`;
   const card=document.querySelector('#flashcard'),row=document.querySelector('#rateRow');
-  const reveal=()=>{card.classList.add('revealed');row.hidden=false;};
+  const reveal=()=>{
+    if (card.classList.contains('revealed')) return;
+    card.classList.add('revealed');
+    row.hidden=false;
+    playCardAudio(item);
+  };
   card.addEventListener('click',e=>{if(!e.target.closest('[data-speak]'))reveal();});
-  card.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();reveal();}});
-  row.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{if(session.answered)return;session.answered=true;record(item,b.dataset.known==='true');setTimeout(nextQuestion,350);}));
+  card.addEventListener('keydown',e=>{if(e.target===card&&(e.key==='Enter'||e.key===' ')){e.preventDefault();reveal();}});
+  row.querySelectorAll('[data-known]').forEach(b=>b.addEventListener('click',()=>{if(session.answered)return;session.answered=true;record(item,b.dataset.known==='true');advanceAfter(350);}));
 }
 
 function record(item,ok){
@@ -411,7 +480,7 @@ function record(item,ok){
   progress.dueAt=new Date(Date.now()+(ok?progress.intervalDays*86400000:600000)).toISOString();
   bumpDaily();saveStats();queueCloudReview(item,ok);
 }
-function nextQuestion(){ session.index++;session.answered=false;if(session.index>=session.cards.length)finishSession();else renderQuestion(); }
+function nextQuestion(){ if(!session)return;session.index++;session.answered=false;if(session.index>=session.cards.length)finishSession();else renderQuestion(); }
 
 function finishSession(){
   const result={...session}; stats.sessions++;
@@ -443,14 +512,20 @@ function renderLibraryResults(){
   const filtered=items.filter(item=>{
     if(libraryLevel!=='all'&&item.level!==libraryLevel)return false;
     if(!query)return true;
-    return [item.kanji,item.word,item.reading,item.romaji,item.meaning,item.clue].some(value=>(value||'').toLocaleLowerCase('fr').includes(query));
+    return [item.kanji,item.word,item.reading,item.romaji,item.meaning,item.clue,item.example,item.exampleReading,item.exampleMeaning].some(value=>(value||'').toLocaleLowerCase('fr').includes(query));
   });
   summary.textContent=`${filtered.length} carte${filtered.length>1?'s':''} · ${items.filter(item=>item.level==='N5').length} N5 · ${items.filter(item=>item.level==='N4').length} N4`;
   list.innerHTML=filtered.length?filtered.map(item=>{
     const progress=stats.mastered[item.kanji],success=progress?.seen?Math.round(progress.correct/progress.seen*100):null;
-    return `<article class="catalog-card"><div class="catalog-kanji">${escapeHtml(item.kanji)}</div><div class="catalog-copy"><div><strong>${escapeHtml(item.word)}</strong><span>${escapeHtml(item.reading)} · ${escapeHtml(item.romaji)}</span></div><p>${escapeHtml(item.meaning)}</p><small>${item.level}${success===null?' · Nouvelle':` · ${success}% · ${progress.seen} vue${progress.seen>1?'s':''}`}</small></div><button class="catalog-sound" data-speak="${escapeAttribute(item.word)}" aria-label="Écouter ${escapeAttribute(item.word)}">♪</button></article>`;
+    return `<article class="catalog-card"><div class="catalog-kanji" lang="ja">${escapeHtml(item.kanji)}</div><div class="catalog-copy"><div><strong lang="ja">${escapeHtml(item.word)}</strong><span><span lang="ja">${escapeHtml(item.reading)}</span> · ${escapeHtml(item.romaji)}</span></div><p>${escapeHtml(item.meaning)}</p><small>${item.level}${success===null?' · Nouvelle':` · ${success}% · ${progress.seen} vue${progress.seen>1?'s':''}`}</small></div><button class="catalog-sound" data-speak="${escapeAttribute(item.reading)}" aria-label="Écouter ${escapeAttribute(item.word)}">♪</button>${usageExample(item, true)}</article>`;
   }).join(''):`<div class="empty-library"><strong>Aucune carte trouvée</strong><p>Essaie un autre mot ou change de niveau.</p></div>`;
 }
+
+document.addEventListener('change', event => {
+  if (event.target.id !== 'automaticAudio') return;
+  automaticAudio = event.target.checked;
+  localStorage.setItem('kanjiSprintAudio', JSON.stringify({ enabled: automaticAudio }));
+});
 
 document.addEventListener('click',e=>{
   const speaker=e.target.closest('[data-speak]'); if(speaker){e.stopPropagation();speakJapanese(speaker.dataset.speak);return;}
