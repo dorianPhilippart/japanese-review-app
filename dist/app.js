@@ -406,9 +406,14 @@ async function initializeCloud(){
 
 function go(next){
   route=next; session=null;
-  const activeRoute=next==='kanji'?'library':['home','progress','library'].includes(next)?next:next==='account'?null:'quick';
-  document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.go===activeRoute));
-  if(next==='home')renderHome();else if(next==='progress')renderProgress();else if(next==='library')renderLibrary();else if(next==='kanji')renderKanjiCatalog();else if(next==='account')renderAccount();else startQuiz(next);
+  const activeRoute=next==='kanji'?'library':['home','progress','library','guide'].includes(next)?next:next==='account'?null:'quick';
+  document.querySelectorAll('.nav-item').forEach(button => {
+    const active = button.dataset.go === activeRoute;
+    button.classList.toggle('active', active);
+    if (active) button.setAttribute('aria-current', 'page');
+    else button.removeAttribute('aria-current');
+  });
+  if(next==='home')renderHome();else if(next==='progress')renderProgress();else if(next==='library')renderLibrary();else if(next==='kanji')renderKanjiCatalog();else if(next==='guide')renderGuide();else if(next==='account')renderAccount();else startQuiz(next);
   window.scrollTo({top:0,behavior:'smooth'}); app.focus({preventScroll:true});
 }
 

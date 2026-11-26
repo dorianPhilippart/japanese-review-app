@@ -11,6 +11,7 @@ Application PWA mobile pour réviser le vocabulaire et les kanji japonais.
 - vocabulaire JLPT N5, N4 et N3 ;
 - bibliothèque de 1 328 cartes de vocabulaire avec recherche et prononciation, dont 84 avec un exemple traduit ;
 - répertoire hors ligne de 2 383 kanjis du N5 au N1, avec recherche et cartes mémoire ;
+- guide pratique bilingue hors ligne, avec phrases de voyage, grammaire de base et vocabulaire du quotidien ;
 - révisions dues avec répétition espacée ;
 - révision ciblée selon les résultats ;
 - prononciation japonaise automatique, réglable sur l’accueil ;
