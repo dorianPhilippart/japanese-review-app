@@ -1,6 +1,7 @@
-const CACHE='kanji-sprint-v9';
-const ASSETS=['./','index.html','styles.css?v=9','supabase.js?v=7','config.js?v=7','extra-cards.js?v=8','kanji.js?v=9','kanji-catalog.json?v=9','app.js?v=9','manifest.webmanifest?v=7','icon.svg?v=7','icon-192.png?v=7','icon-512.png?v=7','apple-touch-icon.png?v=7'];
-self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS)).then(()=>self.skipWaiting())));
+const CACHE='kanji-sprint-v10';
+const ENGLISH_MANIFEST='manifest.en.webmanifest?v=10';
+const ASSETS=['./','index.html','styles.css?v=10','supabase.js?v=7','config.js?v=7','extra-cards.js?v=8','vocabulary-en.js?v=10','i18n.js?v=10','kanji.js?v=10','kanji-catalog.json?v=10','app.js?v=10','manifest.webmanifest?v=7','icon.svg?v=7','icon-192.png?v=7','icon-512.png?v=7','apple-touch-icon.png?v=7'];
+self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll([...ASSETS,ENGLISH_MANIFEST])).then(()=>self.skipWaiting())));
 self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
 self.addEventListener('fetch',event=>{
   if(event.request.method!=='GET') return;

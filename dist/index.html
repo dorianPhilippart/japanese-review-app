@@ -12,30 +12,30 @@
   <link rel="manifest" href="manifest.webmanifest?v=7">
   <link rel="icon" href="icon.svg?v=7" type="image/svg+xml">
   <link rel="apple-touch-icon" href="apple-touch-icon.png?v=7">
-  <link rel="stylesheet" href="styles.css?v=9">
+  <link rel="stylesheet" href="styles.css?v=10">
   <title>Kanji Sprint</title>
 </head>
 <body>
   <div class="app-shell">
     <header class="topbar">
-      <button class="brand" data-go="home" aria-label="Accueil Kanji Sprint">
+      <button class="brand" data-go="home" aria-label="Accueil Kanji Sprint" data-translate-label="Accueil Kanji Sprint">
         <img class="brand-mark" src="icon.svg?v=7" alt="" width="36" height="36">
         <span>Kanji Sprint</span>
       </button>
       <div class="top-actions">
-        <button class="install-pill" id="installButton" hidden>Installer</button>
-        <button class="account-pill" id="accountButton" data-go="account" aria-label="Compte et synchronisation">☁</button>
-        <div class="streak" aria-label="Série actuelle"><span>🔥</span><strong id="streakCount">0</strong></div>
+        <button class="install-pill" id="installButton" hidden data-translate="Installer">Installer</button>
+        <button class="account-pill" id="accountButton" data-go="account" aria-label="Compte et synchronisation" data-translate-label="Compte et synchronisation">☁</button>
+        <div class="streak" aria-label="Série actuelle" data-translate-label="Série actuelle"><span>🔥</span><strong id="streakCount">0</strong></div>
       </div>
     </header>
 
     <main id="app" tabindex="-1"></main>
 
-    <nav class="bottom-nav" aria-label="Navigation principale">
-      <button class="nav-item active" data-go="home"><span class="nav-icon">⌂</span><span>Accueil</span></button>
+    <nav class="bottom-nav" aria-label="Navigation principale" data-translate-label="Navigation principale">
+      <button class="nav-item active" data-go="home"><span class="nav-icon">⌂</span><span data-translate="Accueil">Accueil</span></button>
       <button class="nav-item" data-go="quick"><span class="nav-icon">⚡</span><span>Quiz</span></button>
-      <button class="nav-item" data-go="library"><span class="nav-icon">本</span><span>Cartes</span></button>
-      <button class="nav-item" data-go="progress"><span class="nav-icon">◔</span><span>Progrès</span></button>
+      <button class="nav-item" data-go="library"><span class="nav-icon">本</span><span data-translate="Cartes">Cartes</span></button>
+      <button class="nav-item" data-go="progress"><span class="nav-icon">◔</span><span data-translate="Progrès">Progrès</span></button>
     </nav>
   </div>
   <script>
@@ -51,7 +51,9 @@
   <script src="supabase.js?v=7"></script>
   <script src="config.js?v=7"></script>
   <script src="extra-cards.js?v=8"></script>
-  <script src="kanji.js?v=9"></script>
-  <script src="app.js?v=9"></script>
+  <script src="vocabulary-en.js?v=10"></script>
+  <script src="i18n.js?v=10"></script>
+  <script src="kanji.js?v=10"></script>
+  <script src="app.js?v=10"></script>
 </body>
 </html>

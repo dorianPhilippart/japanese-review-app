@@ -41,6 +41,7 @@ const catalog = collections.flatMap((rows, index) => {
       character: row.character, level, strokes: row.strokes,
       on: row.onyomi ?? [], kun: row.kunyomi ?? [],
       meanings: meanings || row.meanings || [], language: meanings ? 'fr' : 'en',
+      meaningsEn: row.meanings || [],
       words: (row.words ?? []).filter(word => word !== row.character && word.includes(row.character))
     };
   });

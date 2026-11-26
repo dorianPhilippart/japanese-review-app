@@ -14,12 +14,12 @@ function normalizeKanjiSearch(value) {
 function filterKanji(catalog, level, query) {
   const term = normalizeKanjiSearch(query.trim());
   return catalog.filter(card => card.level === level && (!term ||
-    [card.character, ...card.on, ...card.kun, ...card.meanings, ...card.words]
+    [card.character, ...card.on, ...card.kun, ...localizedKanjiMeanings(card).values, ...card.words]
       .some(value => normalizeKanjiSearch(value).includes(term))));
 }
 
 function loadKanjiCatalog() {
-  kanjiCatalogRequest ??= fetch('kanji-catalog.json?v=9').then(response => {
+  kanjiCatalogRequest ??= fetch('kanji-catalog.json?v=10').then(response => {
     if (!response.ok) throw new Error('Catalogue indisponible');
     return response.json();
   }).catch(error => {
@@ -34,38 +34,42 @@ function kanjiDetails(card) {
   return `<dl class="kanji-details">
     ${readings.filter(([, values]) => values.length).map(([label, values]) =>
       `<div><dt>${label}</dt><dd lang="ja">${escapeHtml(values.join(' ・ '))}</dd></div>`).join('')}
-    <div><dt>Nombre de traits</dt><dd>${card.strokes}</dd></div>
-    ${card.words.length ? `<div><dt>Dans des mots</dt><dd lang="ja">${escapeHtml(card.words.join(' ・ '))}</dd></div>` : ''}
+    <div><dt>${t("Nombre de traits")}</dt><dd>${card.strokes}</dd></div>
+    ${card.words.length ? `<div><dt>${t("Dans des mots")}</dt><dd lang="ja">${escapeHtml(card.words.join(' ・ '))}</dd></div>` : ''}
   </dl>`;
 }
 
+function localizedKanjiMeanings(card) {
+  if (appLanguage === 'en') return { values: card.meaningsEn, language: 'en' };
+  return { values: card.meanings, language: card.language };
+}
+
 function kanjiMeanings(card) {
-  const text = card.meanings.join(' · ');
-  return text ? `<span lang="${card.language}">${escapeHtml(text)}</span>` : 'Sens indisponible';
+  const {values, language} = localizedKanjiMeanings(card);
+  const text = values.join(' · ');
+  return text ? `<span lang="${language}">${escapeHtml(text)}</span>` : t("Sens indisponible");
 }
 
 async function renderKanjiCatalog() {
   app.innerHTML = `<section>
-    <button type="button" class="secondary" data-go="library">Vocabulaire</button>
-    <h1 class="kanji-title">Kanjis</h1>
+    <button type="button" class="secondary" data-go="library">${t("Vocabulaire")}</button>
+    <h1 class="kanji-title">${t("Kanjis")}</h1>
     <div class="library-tools">
-      <label for="kanjiLevel">Niveau JLPT</label>
+      <label for="kanjiLevel">${t("Niveau JLPT")}</label>
       <select class="library-search" id="kanjiLevel" disabled>${kanjiLevels.map(level =>
         `<option value="${level}" ${level === kanjiLevel ? 'selected' : ''}>${level}</option>`).join('')}</select>
-      <input class="library-search" id="kanjiSearch" type="search" aria-label="Rechercher un kanji" placeholder="Caractère, lecture ou sens" disabled>
+      <input class="library-search" id="kanjiSearch" type="search" aria-label="${t("Rechercher un kanji")}" placeholder="${t("Caractère, lecture ou sens")}" disabled>
     </div>
-    <p class="catalog-summary" role="status" id="kanjiCount">Chargement du répertoire…</p>
-    <button class="primary full-button" id="kanjiPractice" type="button" hidden>Réviser ces kanjis</button>
+    <p class="catalog-summary" role="status" id="kanjiCount">${t("Chargement du répertoire…")}</p>
+    <button class="primary full-button" id="kanjiPractice" type="button" hidden>${t("Réviser ces kanjis")}</button>
     <div class="catalog-list" id="kanjiResults"></div>
-    <button class="secondary full-button" id="kanjiMore" type="button" hidden>Afficher plus</button>
+    <button class="secondary full-button" id="kanjiMore" type="button" hidden>${t("Afficher plus")}</button>
     <details class="kanji-sources">
-      <summary>Sources et classement</summary>
-      <p>Les niveaux sont indicatifs. Le JLPT ne publie pas de liste officielle de kanjis pour le format actuel.</p>
-      <p>Répertoire adapté d’<a href="https://github.com/evanclan/OpenJLPT">OpenJLPT</a>, qui s’appuie sur
-      les <a href="https://www.tanos.co.uk/jlpt/">listes de Jonathan Waller</a>, JMdict et KANJIDIC2 (EDRDG) et Tatoeba.
-      Lectures, sens et nombre de traits tirés de <a href="https://www.edrdg.org/wiki/KANJIDIC_Project.html">KANJIDIC2</a>.
-      Données utilisées selon la <a href="https://www.edrdg.org/edrdg/licence.html">licence EDRDG</a> et distribuées sous
-      <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>.</p>
+      <summary>${t("Sources et classement")}</summary>
+      <p>${t("Les niveaux sont indicatifs. Le JLPT ne publie pas de liste officielle de kanjis pour le format actuel.")}</p>
+      ${appLanguage === 'en'
+        ? '<p>Adapted from <a href="https://github.com/evanclan/OpenJLPT">OpenJLPT</a>, which draws on <a href="https://www.tanos.co.uk/jlpt/">Jonathan Waller’s lists</a>, JMdict, KANJIDIC2 (EDRDG), and Tatoeba. Readings, meanings, and stroke counts come from <a href="https://www.edrdg.org/wiki/KANJIDIC_Project.html">KANJIDIC2</a>. The data is used under the <a href="https://www.edrdg.org/edrdg/licence.html">EDRDG license</a> and distributed under <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>.</p>'
+        : '<p>Répertoire adapté d’<a href="https://github.com/evanclan/OpenJLPT">OpenJLPT</a>, qui s’appuie sur les <a href="https://www.tanos.co.uk/jlpt/">listes de Jonathan Waller</a>, JMdict, KANJIDIC2 (EDRDG) et Tatoeba. Lectures, sens et nombre de traits tirés de <a href="https://www.edrdg.org/wiki/KANJIDIC_Project.html">KANJIDIC2</a>. Données utilisées selon la <a href="https://www.edrdg.org/edrdg/licence.html">licence EDRDG</a> et distribuées sous <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>.</p>'}
     </details>
   </section>`;
   const level = app.querySelector('#kanjiLevel');
@@ -93,7 +97,7 @@ async function renderKanjiCatalog() {
       kanjiQuery = search.value;
       visible = filterKanji(catalog, kanjiLevel, kanjiQuery);
       offset = 0;
-      count.textContent = `${visible.length} kanji${visible.length > 1 ? 's' : ''} · ${kanjiLevel}`;
+      count.textContent = `${t(visible.length === 1 ? "{n} kanji" : "{n} kanjis", {n:visible.length})} · ${kanjiLevel}`;
       results.replaceChildren();
       practice.hidden = !visible.length;
       showMore();
@@ -105,27 +109,27 @@ async function renderKanjiCatalog() {
     practice.addEventListener('click', () => practiceKanji(shuffle(visible).slice(0, 10)));
     updateResults();
   } catch {
-    if (count.isConnected) count.textContent = 'Répertoire indisponible. Rouvre cet écran pour réessayer.';
+    if (count.isConnected) count.textContent = t("Répertoire indisponible. Rouvre cet écran pour réessayer.");
   }
 }
 
 function practiceKanji(cards, index = 0, revealed = false) {
   const card = cards[index];
   if (!card) {
-    app.innerHTML = `<section class="result"><h1>Révision terminée</h1>
-      <p>${cards.length} kanji${cards.length > 1 ? 's' : ''} révisé${cards.length > 1 ? 's' : ''}.</p>
-      <button type="button" class="primary" data-go="kanji">Retour aux kanjis</button></section>`;
+    app.innerHTML = `<section class="result"><h1>${t("Révision terminée")}</h1>
+      <p>${t(cards.length === 1 ? "{n} kanji révisé." : "{n} kanjis révisés.", {n:cards.length})}</p>
+      <button type="button" class="primary" data-go="kanji">${t("Retour aux kanjis")}</button></section>`;
     app.querySelector('[data-go]').focus();
     return;
   }
   app.innerHTML = `<section class="kanji-practice">
-    <button type="button" class="secondary" data-go="kanji">Retour aux kanjis</button>
+    <button type="button" class="secondary" data-go="kanji">${t("Retour aux kanjis")}</button>
     <p class="catalog-summary">${index + 1} / ${cards.length} · ${card.level}</p>
     <div class="prompt-card">
       <div class="word-large" lang="ja">${escapeHtml(card.character)}</div>
       ${revealed ? `<div class="meaning">${kanjiMeanings(card)}</div>${kanjiDetails(card)}` : ''}
     </div>
-    <button type="button" class="primary full-button" id="kanjiNext">${revealed ? 'Suivant' : 'Révéler la carte'}</button>
+    <button type="button" class="primary full-button" id="kanjiNext">${revealed ? t("Suivant") : t("Révéler la carte")}</button>
   </section>`;
   const next = app.querySelector('#kanjiNext');
   next.addEventListener('click', () => practiceKanji(cards, index + Number(revealed), !revealed));

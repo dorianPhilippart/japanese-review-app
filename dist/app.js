@@ -107,7 +107,7 @@ function updateCloudIndicator(){
   if(!accountButton)return;
   accountButton.textContent=cloudUser?(cloudStatus==='syncing'?'↻':'✓'):'☁';
   accountButton.classList.toggle('connected',Boolean(cloudUser));
-  accountButton.title=cloudUser?(cloudStatus==='syncing'?'Synchronisation…':'Progression synchronisée'):'Connexion au cloud';
+  accountButton.title=cloudUser?(cloudStatus==='syncing'?t("Synchronisation…"):t("Progression synchronisée")):t("Connexion au cloud");
 }
 function shuffle(arr){ return [...arr].sort(() => Math.random() - .5); }
 function escapeHtml(value){ const d=document.createElement('div'); d.textContent=value; return d.innerHTML; }
@@ -161,18 +161,18 @@ function playCardAudio(item) {
   if (automaticAudio) speakJapanese(item.reading);
 }
 
-function audioButton(text, label = 'Écouter') {
+function audioButton(text, label = t("Écouter")) {
   return `<button type="button" class="sound-button" data-speak="${escapeAttribute(text)}" aria-label="${label}">♪ ${label}</button>`;
 }
 
 function usageExample(item, withAudio = false) {
   if (!item.example) return '';
   return `<div class="usage-example">
-    <span class="usage-label">En contexte</span>
+    <span class="usage-label">${t("En contexte")}</span>
     <strong lang="ja">${escapeHtml(item.example)}</strong>
     <span lang="ja">${escapeHtml(item.exampleReading || '')}</span>
-    <span>${escapeHtml(item.exampleMeaning || '')}</span>
-    ${withAudio ? audioButton(item.example, 'Écouter la phrase') : ''}
+    <span>${escapeHtml(cardText(item, "exampleMeaning"))}</span>
+    ${withAudio ? audioButton(item.example, t("Écouter la phrase")) : ''}
   </div>`;
 }
 
@@ -344,50 +344,56 @@ function go(next){
 function renderAccount(){
   const queued=reviewQueue().length;
   if(cloudUser){
-    const status=cloudStatus==='syncing'?'Synchronisation en cours…':cloudStatus==='error'?'Synchronisation en attente':'Progression synchronisée';
-    app.innerHTML=`<section class="account-page"><p class="eyebrow">Compte</p><h1>Ton japonais,<br>sur tous tes appareils.</h1><div class="cloud-card connected-card"><div class="cloud-icon">✓</div><div><strong>${escapeHtml(cloudUser.email||'Compte connecté')}</strong><p>${status}${queued?` · ${queued} action${queued>1?'s':''} en attente`:''}</p></div></div>${cloudMessage?`<p class="cloud-notice">${escapeHtml(cloudMessage)}</p>`:''}<div class="account-actions"><button class="primary" data-sync-now>Synchroniser maintenant</button><button class="secondary" data-signout>Se déconnecter</button><button class="secondary" data-go="home">Retour à l’accueil</button></div><p class="privacy-note">Le catalogue reste disponible hors ligne. Tes résultats sont envoyés avec une connexion chiffrée et protégés par ton compte.</p></section>`;
+    const status=cloudStatus==='syncing'?t("Synchronisation en cours…"):cloudStatus==='error'?t("Synchronisation en attente"):t("Progression synchronisée");
+    app.innerHTML=`<section class="account-page"><p class="eyebrow">${t("Compte")}</p><h1>${t("Ton japonais,<br>sur tous tes appareils.")}</h1><div class="cloud-card connected-card"><div class="cloud-icon">✓</div><div><strong>${escapeHtml(cloudUser.email||t("Compte connecté"))}</strong><p>${status}${queued?` · ${t(queued === 1 ? "{n} action en attente" : "{n} actions en attente", {n:queued})}`:''}</p></div></div>${cloudMessage?`<p class="cloud-notice">${escapeHtml(t(cloudMessage))}</p>`:''}<div class="account-actions"><button class="primary" data-sync-now>${t("Synchroniser maintenant")}</button><button class="secondary" data-signout>${t("Se déconnecter")}</button><button class="secondary" data-go="home">${t("Retour à l’accueil")}</button></div><p class="privacy-note">${t("Le catalogue reste disponible hors ligne. Tes résultats sont envoyés avec une connexion chiffrée et protégés par ton compte.")}</p></section>`;
     return;
   }
-  app.innerHTML=`<section class="account-page"><p class="eyebrow">Synchronisation cloud</p><h1>Retrouve tes progrès partout.</h1><p class="hero-copy">Entre ton adresse e-mail. Supabase t’enverra un lien sécurisé, sans mot de passe.</p><form class="login-card" id="loginForm"><label for="emailInput">Adresse e-mail</label><input class="answer-input" id="emailInput" name="email" type="email" autocomplete="email" required placeholder="toi@exemple.fr"><button class="primary" type="submit">Recevoir mon lien de connexion</button><p class="form-message" id="authMessage" aria-live="polite">${escapeHtml(cloudMessage)}</p></form><button class="secondary full-button" data-go="home">Continuer sans compte</button><p class="privacy-note">Sans compte, tes données restent uniquement sur cet appareil. À la première connexion, la progression locale est fusionnée avec le cloud.</p></section>`;
+  app.innerHTML=`<section class="account-page"><p class="eyebrow">${t("Synchronisation cloud")}</p><h1>${t("Retrouve tes progrès partout.")}</h1><p class="hero-copy">${t("Entre ton adresse e-mail. Supabase t’enverra un lien sécurisé, sans mot de passe.")}</p><form class="login-card" id="loginForm"><label for="emailInput">${t("Adresse e-mail")}</label><input class="answer-input" id="emailInput" name="email" type="email" autocomplete="email" required placeholder="${t("toi@exemple.fr")}"><button class="primary" type="submit">${t("Recevoir mon lien de connexion")}</button><p class="form-message" id="authMessage" aria-live="polite">${escapeHtml(t(cloudMessage))}</p></form><button class="secondary full-button" data-go="home">${t("Continuer sans compte")}</button><p class="privacy-note">${t("Sans compte, tes données restent uniquement sur cet appareil. À la première connexion, la progression locale est fusionnée avec le cloud.")}</p></section>`;
   document.querySelector('#loginForm').addEventListener('submit',sendMagicLink);
 }
 
 async function sendMagicLink(event){
   event.preventDefault();
   const form=event.currentTarget,email=form.querySelector('[name="email"]').value.trim(),button=form.querySelector('button'),message=form.querySelector('#authMessage');
-  if(!supabase){message.textContent='La connexion cloud est momentanément indisponible.';return;}
-  button.disabled=true;message.textContent='Envoi en cours…';
+  if(!supabase){message.textContent=t("La connexion cloud est momentanément indisponible.");return;}
+  button.disabled=true;message.textContent=t("Envoi en cours…");
   const redirectTo=`${location.origin}${location.pathname}`;
   const {error}=await supabase.auth.signInWithOtp({email,options:{emailRedirectTo:redirectTo}});
   button.disabled=false;
-  message.textContent=error?`Impossible d’envoyer le lien : ${error.message}`:'Lien envoyé. Ouvre-le sur cet appareil pour te connecter.';
+  message.textContent=error?t("Impossible d’envoyer le lien"):t("Lien envoyé. Ouvre-le sur cet appareil pour te connecter.");
 }
 
 function renderHome(){
   const daily=getDaily(),goal=Number(preferences.dailyGoal)||10,todayDone=Math.min(goal,daily.count),dueCount=dueItems().length,levelName=preferences.level==='all'?'N5 + N4':preferences.level;
   app.innerHTML=`<section>
     <p class="eyebrow">毎日、少しずつ</p>
-    <h1>Un peu de japonais,<br>tous les jours.</h1>
-    <p class="hero-copy">Des sessions courtes qui s’adaptent à tes réponses et renforcent tes cartes les plus fragiles.</p>
+    <h1>${t("Un peu de japonais,<br>tous les jours.")}</h1>
+    <p class="hero-copy">${t("Des sessions courtes qui s’adaptent à tes réponses et renforcent tes cartes les plus fragiles.")}</p>
     <div class="daily-card">
-      <div class="daily-top"><div><span class="daily-label">Objectif du jour · ${levelName}</span><h2>${todayDone>=goal?'Objectif atteint. よくできました！':`${goal-todayDone} cartes à réviser`}</h2></div><strong>${todayDone}/${goal}</strong></div>
+      <div class="daily-top"><div><span class="daily-label">${t("Objectif du jour")} · ${levelName}</span><h2>${todayDone>=goal?t("Objectif atteint. よくできました！"):t("{n} cartes à réviser", {n:goal-todayDone})}</h2></div><strong>${todayDone}/${goal}</strong></div>
       <div class="progress-track"><div class="progress-fill" style="width:${Math.round(todayDone/goal*100)}%"></div></div>
-      <button class="primary" data-start="quick">${todayDone?'Continuer la session':'Lancer le quiz rapide'}</button>
+      <button class="primary" data-start="quick">${todayDone?t("Continuer la session"):t("Lancer le quiz rapide")}</button>
     </div>
-    ${cloudUser?`<button class="due-banner" data-start="due"><span class="due-icon">時</span><span><strong>${dueCount?`${dueCount} révision${dueCount>1?'s':''} due${dueCount>1?'s':''}`:'Tout est à jour'}</strong><small>${dueCount?'Commencer par les cartes arrivées à échéance':'La prochaine session consolidera de nouvelles cartes'}</small></span><b>›</b></button>`:''}
-    <div class="study-config" aria-label="Réglages de la session">
-      <div class="config-group"><span>Niveau</span><div class="segmented">${['all','N5','N4'].map(level=>`<button class="config-chip ${preferences.level===level?'active':''}" data-level="${level}">${level==='all'?'Tous':level}</button>`).join('')}</div></div>
-      <div class="config-group"><span>Cartes</span><div class="segmented">${[5,10,20].map(length=>`<button class="config-chip ${Number(preferences.length)===length?'active':''}" data-length="${length}">${length}</button>`).join('')}</div></div>
-      <div class="config-group goal-config"><span>Objectif quotidien</span><div class="segmented">${[5,10,20].map(goalValue=>`<button class="config-chip ${goal===goalValue?'active':''}" data-goal="${goalValue}">${goalValue}</button>`).join('')}</div></div>
-      <label class="audio-setting"><input type="checkbox" id="automaticAudio" ${automaticAudio ? 'checked' : ''}> Prononciation automatique</label>
+    ${cloudUser?`<button class="due-banner" data-start="due"><span class="due-icon">時</span><span><strong>${dueCount?t(dueCount === 1 ? "{n} révision due" : "{n} révisions dues", {n:dueCount}):t("Tout est à jour")}</strong><small>${dueCount?t("Commencer par les cartes arrivées à échéance"):t("La prochaine session consolidera de nouvelles cartes")}</small></span><b>›</b></button>`:''}
+    <div class="study-config" aria-label="${t("Réglages de la session")}">
+      <div class="config-group"><span>${t("Niveau")}</span><div class="segmented">${['all','N5','N4'].map(level=>`<button class="config-chip ${preferences.level===level?'active':''}" data-level="${level}">${level==='all'?t("Tous"):level}</button>`).join('')}</div></div>
+      <div class="config-group"><span>${t("Cartes")}</span><div class="segmented">${[5,10,20].map(length=>`<button class="config-chip ${Number(preferences.length)===length?'active':''}" data-length="${length}">${length}</button>`).join('')}</div></div>
+      <div class="config-group goal-config"><span>${t("Objectif quotidien")}</span><div class="segmented">${[5,10,20].map(goalValue=>`<button class="config-chip ${goal===goalValue?'active':''}" data-goal="${goalValue}">${goalValue}</button>`).join('')}</div></div>
+      <label class="audio-setting language-setting" for="appLanguage">${t("Langue de l’application")}
+        <select class="config-chip" id="appLanguage">
+          <option value="fr" lang="fr" ${appLanguage === 'fr' ? 'selected' : ''}>Français</option>
+          <option value="en" lang="en" ${appLanguage === 'en' ? 'selected' : ''}>English</option>
+        </select>
+      </label>
+      <label class="audio-setting"><input type="checkbox" id="automaticAudio" ${automaticAudio ? 'checked' : ''}> ${t("Prononciation automatique")}</label>
     </div>
-    <div class="section-title"><h2>Choisir un exercice</h2><span>${preferences.length} cartes</span></div>
+    <div class="section-title"><h2>${t("Choisir un exercice")}</h2><span>${t("{n} cartes", {n:preferences.length})}</span></div>
     <div class="mode-grid">
-      <button class="mode-card" data-start="recognition"><span class="mode-icon">見</span><strong>Reconnaissance</strong><small>Trouver le sens d’un mot</small></button>
-      <button class="mode-card" data-start="typing"><span class="mode-icon">あ</span><strong>Saisie</strong><small>Écrire la bonne lecture</small></button>
-      <button class="mode-card" data-start="mcq"><span class="mode-icon">三</span><strong>QCM</strong><small>Choisir sans hésiter</small></button>
-      <button class="mode-card" data-start="quick"><span class="mode-icon">⚡</span><strong>Cartes flash</strong><small>Quiz rapide interactif</small></button>
-      <button class="mode-card targeted" data-start="weak"><span class="mode-icon">的</span><span><strong>Révision ciblée</strong><small>Revoir d’abord tes cartes les plus faibles</small></span></button>
+      <button class="mode-card" data-start="recognition"><span class="mode-icon">見</span><strong>${t("Reconnaissance")}</strong><small>${t("Trouver le sens d’un mot")}</small></button>
+      <button class="mode-card" data-start="typing"><span class="mode-icon">あ</span><strong>${t("Saisie")}</strong><small>${t("Écrire la bonne lecture")}</small></button>
+      <button class="mode-card" data-start="mcq"><span class="mode-icon">三</span><strong>${t("QCM")}</strong><small>${t("Choisir sans hésiter")}</small></button>
+      <button class="mode-card" data-start="quick"><span class="mode-icon">⚡</span><strong>${t("Cartes flash")}</strong><small>${t("Quiz rapide interactif")}</small></button>
+      <button class="mode-card targeted" data-start="weak"><span class="mode-icon">的</span><span><strong>${t("Révision ciblée")}</strong><small>${t("Revoir d’abord tes cartes les plus faibles")}</small></span></button>
     </div>
   </section>`;
 }
@@ -396,8 +402,8 @@ function startQuiz(mode){ session={mode,cards:selectCards(mode),index:0,score:0,
 
 function renderQuestion(){
   const s=session,item=s.cards[s.index],progress=(s.index/s.cards.length)*100;
-  const names={recognition:'Reconnaissance',typing:'Saisie',mcq:'QCM',quick:'Quiz rapide',weak:'Révision ciblée',due:'Révisions dues'};
-  app.innerHTML=`<div class="quiz-head"><button data-go="home" aria-label="Quitter">×</button><div class="quiz-meta"><strong>${names[s.mode]}</strong><small>${s.index+1} sur ${s.cards.length} · ${item.level}</small></div><div class="score-pill">${s.score}</div></div><div class="quiz-progress"><div style="width:${progress}%"></div></div><div id="questionArea"></div>`;
+  const names={recognition:t("Reconnaissance"),typing:t("Saisie"),mcq:t("QCM"),quick:t("Quiz rapide"),weak:t("Révision ciblée"),due:t("Révisions dues")};
+  app.innerHTML=`<div class="quiz-head"><button data-go="home" aria-label="${t("Quitter")}">×</button><div class="quiz-meta"><strong>${names[s.mode]}</strong><small>${t("{n} sur {total}", {n:s.index+1, total:s.cards.length})} · ${item.level}</small></div><div class="score-pill">${s.score}</div></div><div class="quiz-progress"><div style="width:${progress}%"></div></div><div id="questionArea"></div>`;
   const area=document.querySelector('#questionArea');
   if (s.mode === 'typing') renderTyping(area,item);
   else if (['quick','weak','due'].includes(s.mode)) renderFlash(area,item);
@@ -406,9 +412,9 @@ function renderQuestion(){
 }
 
 function renderChoices(area,item,mode){
-  const options=shuffle([item,...sampleExcept(item)]),label=mode==='recognition'?'Que signifie ce mot ?':'Quelle est sa lecture ?';
+  const options=shuffle([item,...sampleExcept(item)]),label=mode==='recognition'?t("Que signifie ce mot ?"):t("Quelle est sa lecture ?");
   const audio = mode === 'recognition' ? audioButton(item.reading) : '';
-  area.innerHTML=`<div class="prompt-card"><span class="level-badge">${item.level}</span><span class="prompt-label">${label}</span><div class="word-large" lang="ja">${escapeHtml(item.word)}</div>${mode==='mcq'?`<div class="detail">${escapeHtml(item.meaning)}</div>`:''}${audio}</div><div class="choices">${options.map(o=>`<button class="choice" data-answer="${escapeAttribute(o.word)}">${mode==='recognition'?escapeHtml(o.meaning):`<span lang="ja">${escapeHtml(o.reading)}</span> · ${escapeHtml(o.romaji)}`}</button>`).join('')}</div><div class="feedback" id="feedback" aria-live="polite"></div>`;
+  area.innerHTML=`<div class="prompt-card"><span class="level-badge">${item.level}</span><span class="prompt-label">${label}</span><div class="word-large" lang="ja">${escapeHtml(item.word)}</div>${mode==='mcq'?`<div class="detail">${escapeHtml(cardText(item, "meaning"))}</div>`:''}${audio}</div><div class="choices">${options.map(o=>`<button class="choice" data-answer="${escapeAttribute(o.word)}">${mode==='recognition'?escapeHtml(cardText(o, "meaning")):`<span lang="ja">${escapeHtml(o.reading)}</span> · ${escapeHtml(o.romaji)}`}</button>`).join('')}</div><div class="feedback" id="feedback" aria-live="polite"></div>`;
   area.querySelectorAll('.choice').forEach(b=>b.addEventListener('click',()=>answerChoice(b,item)));
 }
 
@@ -417,14 +423,14 @@ function answerChoice(button,item){
   const ok=button.dataset.answer===item.word; button.classList.add(ok?'correct':'wrong');
   document.querySelectorAll('.choice').forEach(b=>{b.disabled=true;if(b.dataset.answer===item.word)b.classList.add('correct');});
   const feedback=document.querySelector('#feedback'); feedback.className=`feedback ${ok?'good':'bad'}`;
-  feedback.textContent=ok?'正解！ Bonne réponse.':`Pas tout à fait — ${item.reading} · ${item.meaning}`;
+  feedback.textContent=ok?t("正解！ Bonne réponse."):`${t("Pas tout à fait")} — ${item.reading} · ${cardText(item, "meaning")}`;
   record(item,ok);
   if (session.mode === 'mcq') showReadingFeedback(item);
   else advanceAfter(ok ? 850 : 1450);
 }
 
 function renderTyping(area,item){
-  area.innerHTML=`<div class="prompt-card"><span class="level-badge">${item.level}</span><span class="prompt-label">Écris la lecture en hiragana</span><div class="word-large" lang="ja">${escapeHtml(item.word)}</div><div class="detail">${escapeHtml(item.meaning)}</div></div><form class="input-wrap" id="typingForm"><input class="answer-input" id="answerInput" lang="ja" autocomplete="off" autocorrect="off" placeholder="Ex. みず" aria-label="Lecture en hiragana"><button class="primary" type="submit">Valider</button></form><p class="hint">Clavier japonais recommandé · le rōmaji est aussi accepté</p><div class="feedback" id="feedback" aria-live="polite"></div>`;
+  area.innerHTML=`<div class="prompt-card"><span class="level-badge">${item.level}</span><span class="prompt-label">${t("Écris la lecture en hiragana")}</span><div class="word-large" lang="ja">${escapeHtml(item.word)}</div><div class="detail">${escapeHtml(cardText(item, "meaning"))}</div></div><form class="input-wrap" id="typingForm"><input class="answer-input" id="answerInput" lang="ja" autocomplete="off" autocorrect="off" placeholder="${t("Ex. みず")}" aria-label="${t("Lecture en hiragana")}"><button class="primary" type="submit">${t("Valider")}</button></form><p class="hint">${t("Clavier japonais recommandé · le rōmaji est aussi accepté")}</p><div class="feedback" id="feedback" aria-live="polite"></div>`;
   document.querySelector('#typingForm').addEventListener('submit',e=>{e.preventDefault();answerTyping(item);});
   setTimeout(()=>document.querySelector('#answerInput')?.focus(),100);
 }
@@ -435,7 +441,7 @@ function answerTyping(item){
   session.answered=true; const ok=value===item.reading||value===item.romaji;
   input.disabled=true; input.style.borderColor=ok?'var(--green)':'var(--red)';
   const feedback=document.querySelector('#feedback'); feedback.className=`feedback ${ok?'good':'bad'}`;
-  feedback.textContent=ok?'正解！ Lecture correcte.':`Réponse : ${item.reading} (${item.romaji})`;
+  feedback.textContent=ok?t("正解！ Lecture correcte."):`${t("Réponse")} : ${item.reading} (${item.romaji})`;
   record(item,ok);
   showReadingFeedback(item);
 }
@@ -444,7 +450,7 @@ function showReadingFeedback(item) {
   playCardAudio(item);
   const controls = document.createElement('div');
   controls.className = 'reading-actions';
-  controls.innerHTML = `${audioButton(item.reading)}<button type="button" class="secondary">Suivant</button>`;
+  controls.innerHTML = `${audioButton(item.reading)}<button type="button" class="secondary">${t("Suivant")}</button>`;
   controls.querySelector('.secondary').addEventListener('click', nextQuestion);
   document.querySelector('#feedback').after(controls);
 }
@@ -457,7 +463,7 @@ function advanceAfter(delay) {
 }
 
 function renderFlash(area,item){
-  area.innerHTML=`<div class="flashcard" id="flashcard" role="button" tabindex="0" aria-label="Retourner la carte"><div class="flash-inner"><div class="flash-face"><span class="level-badge">${item.level}</span><span class="prompt-label">Quel est ce mot ?</span><div class="word-large" lang="ja">${escapeHtml(item.word)}</div><span class="tap-hint">Toucher la carte pour révéler</span></div><div class="flash-face flash-back"><span class="level-badge dark">${item.level}</span><div class="reading"><span lang="ja">${escapeHtml(item.reading)}</span> · ${escapeHtml(item.romaji)}</div><div class="meaning">${escapeHtml(item.meaning)}</div><p class="detail">Kanji : <span lang="ja">${escapeHtml(item.kanji)}</span> — ${escapeHtml(item.clue)}</p>${usageExample(item)}<span class="tap-hint">Évalue ta réponse</span></div></div></div><div class="rate-row" id="rateRow" hidden>${audioButton(item.reading, 'Réécouter le mot')}<button class="again" data-known="false">À revoir</button><button class="know" data-known="true">Je savais</button></div>`;
+  area.innerHTML=`<div class="flashcard" id="flashcard" role="button" tabindex="0" aria-label="${t("Retourner la carte")}"><div class="flash-inner"><div class="flash-face"><span class="level-badge">${item.level}</span><span class="prompt-label">${t("Quel est ce mot ?")}</span><div class="word-large" lang="ja">${escapeHtml(item.word)}</div><span class="tap-hint">${t("Toucher la carte pour révéler")}</span></div><div class="flash-face flash-back"><span class="level-badge dark">${item.level}</span><div class="reading"><span lang="ja">${escapeHtml(item.reading)}</span> · ${escapeHtml(item.romaji)}</div><div class="meaning">${escapeHtml(cardText(item, "meaning"))}</div><p class="detail">${t("Kanji :")} <span lang="ja">${escapeHtml(item.kanji)}</span> — ${escapeHtml(cardText(item, "clue"))}</p>${usageExample(item)}<span class="tap-hint">${t("Évalue ta réponse")}</span></div></div></div><div class="rate-row" id="rateRow" hidden>${audioButton(item.reading, t("Réécouter le mot"))}<button class="again" data-known="false">${t("À revoir")}</button><button class="know" data-known="true">${t("Je savais")}</button></div>`;
   const card=document.querySelector('#flashcard'),row=document.querySelector('#rateRow');
   const reveal=()=>{
     if (card.classList.contains('revealed')) return;
@@ -488,20 +494,20 @@ function finishSession(){
   if(stats.lastDay!==today){const yesterday=new Date();yesterday.setDate(yesterday.getDate()-1);stats.streak=stats.lastDay===dayKey(yesterday)?stats.streak+1:1;stats.lastDay=today;}
   saveStats();
   const ratio=result.score/result.cards.length;
-  app.innerHTML=`<section class="result"><div class="result-badge">${ratio>=.8?'🎉':ratio>=.4?'🌱':'💪'}</div><p class="eyebrow">Session terminée</p><h1>${ratio>=.8?'Très beau sprint !':ratio>=.4?'Bonne progression.':'On recommence ?'}</h1><p class="result-score"><strong>${result.score}/${result.cards.length}</strong> réponses maîtrisées</p><div class="result-actions"><button class="primary" data-retry="${result.mode}">Refaire une session</button><button class="secondary" data-go="progress">Voir mes progrès</button><button class="secondary" data-go="home">Retour à l’accueil</button></div></section>`;
+  app.innerHTML=`<section class="result"><div class="result-badge">${ratio>=.8?'🎉':ratio>=.4?'🌱':'💪'}</div><p class="eyebrow">${t("Session terminée")}</p><h1>${ratio>=.8?t("Très beau sprint !"):ratio>=.4?t("Bonne progression."):t("On recommence ?")}</h1><p class="result-score"><strong>${result.score}/${result.cards.length}</strong> ${t("réponses maîtrisées")}</p><div class="result-actions"><button class="primary" data-retry="${result.mode}">${t("Refaire une session")}</button><button class="secondary" data-go="progress">${t("Voir mes progrès")}</button><button class="secondary" data-go="home">${t("Retour à l’accueil")}</button></div></section>`;
 }
 
 function renderProgress(){
   const success=stats.total?Math.round(stats.correct/stats.total*100):0;
   const mastery=Object.entries(stats.mastered).sort((a,b)=>b[1].seen-a[1].seen).slice(0,12);
-  app.innerHTML=`<section><p class="eyebrow">Ton parcours</p><h1>Progrès</h1><p class="hero-copy">Chaque petite session compte. La révision ciblée utilise ces résultats pour choisir tes prochaines cartes.</p><div class="stats-grid"><div class="stat-card"><strong>${success}%</strong><span>de réussite</span></div><div class="stat-card"><strong>${stats.sessions}</strong><span>sessions</span></div><div class="stat-card"><strong>${stats.total}</strong><span>cartes vues</span></div><div class="stat-card"><strong>${stats.streak} j</strong><span>série actuelle</span></div></div>${mastery.length?`<button class="primary full-button" data-start="weak">Travailler mes cartes faibles</button>`:''}<div class="section-title"><h2>Kanji travaillés</h2><span>${mastery.length}</span></div>${mastery.length?`<div class="mastery-list">${mastery.map(([k,v])=>{const item=items.find(x=>x.kanji===k);return `<div class="mastery-row"><div class="mastery-kanji">${escapeHtml(k)}</div><div><strong>${escapeHtml(item?.clue||'Kanji')}</strong><small>${v.seen} révision${v.seen>1?'s':''} · ${item?.level||''}</small></div><span class="mastery-pct">${Math.round(v.correct/v.seen*100)}%</span></div>`;}).join('')}</div>`:`<div class="prompt-card"><div class="jp-large">始</div><p class="muted">Lance ton premier quiz pour voir tes progrès ici.</p><button class="primary" data-start="quick">Commencer</button></div>`}</section>`;
+  app.innerHTML=`<section><p class="eyebrow">${t("Ton parcours")}</p><h1>${t("Progrès")}</h1><p class="hero-copy">${t("Chaque petite session compte. La révision ciblée utilise ces résultats pour choisir tes prochaines cartes.")}</p><div class="stats-grid"><div class="stat-card"><strong>${success}%</strong><span>${t("de réussite")}</span></div><div class="stat-card"><strong>${stats.sessions}</strong><span>${t("sessions")}</span></div><div class="stat-card"><strong>${stats.total}</strong><span>${t("cartes vues")}</span></div><div class="stat-card"><strong>${t("{n} j", {n:stats.streak})}</strong><span>${t("série actuelle")}</span></div></div>${mastery.length?`<button class="primary full-button" data-start="weak">${t("Travailler mes cartes faibles")}</button>`:''}<div class="section-title"><h2>${t("Kanji travaillés")}</h2><span>${mastery.length}</span></div>${mastery.length?`<div class="mastery-list">${mastery.map(([k,v])=>{const item=items.find(x=>x.kanji===k);return `<div class="mastery-row"><div class="mastery-kanji">${escapeHtml(k)}</div><div><strong>${escapeHtml(cardText(item, 'clue') || 'Kanji')}</strong><small>${t(v.seen === 1 ? "{n} révision" : "{n} révisions", {n:v.seen})} · ${item?.level||''}</small></div><span class="mastery-pct">${Math.round(v.correct/v.seen*100)}%</span></div>`;}).join('')}</div>`:`<div class="prompt-card"><div class="jp-large">始</div><p class="muted">${t("Lance ton premier quiz pour voir tes progrès ici.")}</p><button class="primary" data-start="quick">${t("Commencer")}</button></div>`}</section>`;
 }
 
 function renderLibrary(){
-  app.innerHTML=`<section><p class="eyebrow">${items.length} cartes disponibles</p><h1>Bibliothèque</h1><p class="hero-copy">Recherche un mot, une lecture, un sens ou un kanji et écoute sa prononciation.</p><div class="library-tools"><input class="library-search" id="librarySearch" type="search" placeholder="Ex. eau, みず, 水…" aria-label="Rechercher dans les cartes"><div class="segmented library-levels">${['all','N5','N4'].map(level=>`<button class="config-chip ${libraryLevel===level?'active':''}" data-library-level="${level}">${level==='all'?'Tous':level}</button>`).join('')}</div></div><div class="catalog-summary" id="catalogSummary"></div><div class="catalog-list" id="catalogList"></div></section>`;
+  app.innerHTML=`<section><p class="eyebrow">${t("{n} cartes disponibles", {n:items.length})}</p><h1>${t("Bibliothèque")}</h1><p class="hero-copy">${t("Recherche un mot, une lecture, un sens ou un kanji et écoute sa prononciation.")}</p><div class="library-tools"><input class="library-search" id="librarySearch" type="search" placeholder="${t("Ex. eau, みず, 水…")}" aria-label="${t("Rechercher dans les cartes")}"><div class="segmented library-levels">${['all','N5','N4'].map(level=>`<button class="config-chip ${libraryLevel===level?'active':''}" data-library-level="${level}">${level==='all'?t("Tous"):level}</button>`).join('')}</div></div><div class="catalog-summary" id="catalogSummary"></div><div class="catalog-list" id="catalogList"></div></section>`;
   const input=document.querySelector('#librarySearch');
   input.closest('.library-tools').insertAdjacentHTML('beforebegin',
-    '<button type="button" class="secondary full-button" data-go="kanji">Répertoire des kanjis · N5 à N1</button>');
+    `<button type="button" class="secondary full-button" data-go="kanji">${t("Répertoire des kanjis · N5 à N1")}</button>`);
   input.value=libraryQuery;
   input.addEventListener('input',()=>{libraryQuery=input.value;renderLibraryResults();});
   renderLibraryResults();
@@ -510,20 +516,27 @@ function renderLibrary(){
 function renderLibraryResults(){
   const list=document.querySelector('#catalogList'),summary=document.querySelector('#catalogSummary');
   if(!list||!summary)return;
-  const query=libraryQuery.trim().toLocaleLowerCase('fr');
+  const query=libraryQuery.trim().toLocaleLowerCase(appLanguage);
   const filtered=items.filter(item=>{
     if(libraryLevel!=='all'&&item.level!==libraryLevel)return false;
     if(!query)return true;
-    return [item.kanji,item.word,item.reading,item.romaji,item.meaning,item.clue,item.example,item.exampleReading,item.exampleMeaning].some(value=>(value||'').toLocaleLowerCase('fr').includes(query));
+    return [item.kanji,item.word,item.reading,item.romaji,cardText(item,'meaning'),cardText(item,'clue'),item.example,item.exampleReading,cardText(item,'exampleMeaning')].some(value=>(value||'').toLocaleLowerCase(appLanguage).includes(query));
   });
-  summary.textContent=`${filtered.length} carte${filtered.length>1?'s':''} · ${items.filter(item=>item.level==='N5').length} N5 · ${items.filter(item=>item.level==='N4').length} N4`;
+  summary.textContent=`${t(filtered.length === 1 ? "{n} carte" : "{n} cartes", {n:filtered.length})} · ${items.filter(item=>item.level==='N5').length} N5 · ${items.filter(item=>item.level==='N4').length} N4`;
   list.innerHTML=filtered.length?filtered.map(item=>{
     const progress=stats.mastered[item.kanji],success=progress?.seen?Math.round(progress.correct/progress.seen*100):null;
-    return `<article class="catalog-card"><div class="catalog-kanji" lang="ja">${escapeHtml(item.kanji)}</div><div class="catalog-copy"><div><strong lang="ja">${escapeHtml(item.word)}</strong><span><span lang="ja">${escapeHtml(item.reading)}</span> · ${escapeHtml(item.romaji)}</span></div><p>${escapeHtml(item.meaning)}</p><small>${item.level}${success===null?' · Nouvelle':` · ${success}% · ${progress.seen} vue${progress.seen>1?'s':''}`}</small></div><button class="catalog-sound" data-speak="${escapeAttribute(item.reading)}" aria-label="Écouter ${escapeAttribute(item.word)}">♪</button>${usageExample(item, true)}</article>`;
-  }).join(''):`<div class="empty-library"><strong>Aucune carte trouvée</strong><p>Essaie un autre mot ou change de niveau.</p></div>`;
+    return `<article class="catalog-card"><div class="catalog-kanji" lang="ja">${escapeHtml(item.kanji)}</div><div class="catalog-copy"><div><strong lang="ja">${escapeHtml(item.word)}</strong><span><span lang="ja">${escapeHtml(item.reading)}</span> · ${escapeHtml(item.romaji)}</span></div><p>${escapeHtml(cardText(item, "meaning"))}</p><small>${item.level}${success===null?` · ${t('Nouvelle')}`:` · ${success}% · ${t(progress.seen === 1 ? "{n} vue" : "{n} vues", {n:progress.seen})}`}</small></div><button class="catalog-sound" data-speak="${escapeAttribute(item.reading)}" aria-label="${t("Écouter")} ${escapeAttribute(item.word)}">♪</button>${usageExample(item, true)}</article>`;
+  }).join(''):`<div class="empty-library"><strong>${t("Aucune carte trouvée")}</strong><p>${t("Essaie un autre mot ou change de niveau.")}</p></div>`;
 }
 
 document.addEventListener('change', event => {
+  if (event.target.id === 'appLanguage') {
+    setAppLanguage(event.target.value);
+    updateCloudIndicator();
+    renderHome();
+    document.querySelector('#appLanguage').focus({ preventScroll: true });
+    return;
+  }
   if (event.target.id !== 'automaticAudio') return;
   automaticAudio = event.target.checked;
   localStorage.setItem('kanjiSprintAudio', JSON.stringify({ enabled: automaticAudio }));
@@ -547,4 +560,4 @@ installButton.addEventListener('click',async()=>{if(!installPrompt)return;await 
 window.addEventListener('appinstalled',()=>{installPrompt=null;installButton.hidden=true;});
 window.addEventListener('online',()=>{loadCloudCatalog().then(flushReviewQueue);schedulePreferenceSync();});
 if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(reg=>reg.update()).catch(()=>{}));
-updateStreak();renderHome();initializeCloud();
+translateChrome();updateStreak();renderHome();initializeCloud();

@@ -19,6 +19,7 @@ Application PWA mobile pour réviser le vocabulaire et les kanji japonais.
 - progression locale hors ligne et synchronisation Supabase avec connexion par e-mail ;
 - installation sur Android et iPhone ;
 - fonctionnement hors connexion.
+- interface et fiches en français ou en anglais, choix mémorisé sur l’appareil.
 
 ## Déploiement
 
