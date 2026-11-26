@@ -123,6 +123,7 @@ const englishLabels = {
   "Réviser ces kanjis": "Practice these kanji",
   "Afficher plus": "Show more",
   "Sources et classement": "Sources and level assignments",
+  "Les listes N5 et N4 suivent le classement indicatif d’OpenJLPT.": "The N5 and N4 lists follow OpenJLPT’s approximate level assignments.",
   "Les niveaux sont indicatifs. Le JLPT ne publie pas de liste officielle de kanjis pour le format actuel.": "Levels are approximate. The JLPT does not publish an official kanji list for the current exam.",
   "Répertoire indisponible. Rouvre cet écran pour réessayer.": "Reference unavailable. Reopen this screen to try again.",
   "Révision terminée": "Practice complete",
@@ -181,5 +182,7 @@ function setAppLanguage(value) {
 
 function cardText(item, field) {
   if (!item) return '';
-  return (appLanguage === 'en' ? englishVocabulary[item.word]?.[field] : null) || item[field] || '';
+  if (appLanguage === 'fr') return item[field] || '';
+  const authored = item.referenceVariant ? null : englishVocabulary[item.word]?.[field];
+  return authored || (field === 'meaning' ? item.meaningEn : '') || item[field] || '';
 }

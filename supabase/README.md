@@ -13,7 +13,7 @@ Cette configuration stocke le catalogue et la progression dans PostgreSQL tout e
 ## Ordre de déploiement
 
 1. Appliquer `migrations/202611240001_initial_schema.sql`.
-2. Importer `seed.sql`, puis `seed-examples.sql`, dans `public.vocabulary`.
+2. Importer `seed.sql`, puis `seed-examples.sql`, dans `public.vocabulary`. Pour compléter N5 et N4, génère le SQL d’import avec `node src/build-vocabulary-reference.mjs --sql`. Les mots déjà présents conservent leur identifiant et leur contenu.
 3. Activer l’authentification par e-mail avec lien magique.
 4. Ajouter les URL de redirection GitHub Pages et ChatGPT Sites dans Supabase Auth.
 5. Configurer la PWA avec l’URL du projet et la clé publishable.

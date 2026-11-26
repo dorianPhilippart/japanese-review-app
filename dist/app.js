@@ -50,7 +50,17 @@ function loadCachedCatalog(){
   } catch { return null; }
 }
 
-const bundledCatalog = [...fallbackItems, ...extraCards];
+const authoredCatalog = [...fallbackItems, ...extraCards];
+const authoredByWord = new Map(authoredCatalog.map(card => [card.word, card]));
+const referenceByWord = new Map();
+for (const card of referenceVocabulary) {
+  if (!referenceByWord.has(card.word)) referenceByWord.set(card.word, []);
+  referenceByWord.get(card.word).push(card);
+}
+const bundledCatalog = [
+  ...authoredCatalog,
+  ...[...referenceByWord.values()].map(forms => forms[0]).filter(card => !authoredByWord.has(card.word))
+];
 const cachedCatalog = loadCachedCatalog() || [];
 let items = mergeCatalog(cachedCatalog);
 
@@ -65,6 +75,27 @@ function mergeCatalog(cloudCards) {
     });
   }
   return [...byWord.values()];
+}
+
+function progressKey(item) {
+  return authoredByWord.get(item.word)?.kanji || `word:${item.word}`;
+}
+
+function matchesVocabularyLevel(item, level) {
+  return level === 'all' || item.level === level ||
+    Boolean(referenceByWord.get(item.word)?.some(form => form.level === level));
+}
+
+function vocabularyForLevel(item, level) {
+  if (level === 'all' || level === item.level) return item;
+  const form = referenceByWord.get(item.word)?.find(entry => entry.level === level);
+  if (!form) return item;
+  if (form.reading === item.reading) return { ...item, level };
+  return { ...item, ...form, example: '', clue: '', referenceVariant: true };
+}
+
+function vocabularyReadings(item) {
+  return [item, ...(referenceByWord.get(item.word) || [])];
 }
 
 const defaults = { total:0, correct:0, sessions:0, streak:0, lastDay:'', mastered:{} };
@@ -124,16 +155,30 @@ function getDaily(){
   return daily;
 }
 function bumpDaily(){ const daily=getDaily(); daily.count=Math.min(999,daily.count+1); localStorage.setItem('kanjiSprintDaily',JSON.stringify(daily)); }
-function availableItems(){ return preferences.level==='all' ? items : items.filter(item=>item.level===preferences.level); }
-function sampleExcept(current, count=3){
-  const pool=availableItems().filter(x=>x.word!==current.word);
-  return shuffle(pool.length>=count ? pool : items.filter(x=>x.word!==current.word)).slice(0,count);
+function availableItems(){
+  const level = preferences.level;
+  return level === 'all' ? items : items.filter(item => matchesVocabularyLevel(item, level))
+    .map(item => vocabularyForLevel(item, level));
 }
-function accuracy(item){ const m=stats.mastered[item.kanji]; return m?.seen ? m.correct/m.seen : .55; }
+function sampleExcept(current, count=3){
+  const key = session.mode === 'recognition'
+    ? card => cardText(card, 'meaning').toLowerCase()
+    : card => card.reading;
+  const used = new Set(vocabularyReadings(current).map(key));
+  const options = [];
+  for (const card of [...shuffle(availableItems()), ...shuffle(items)]) {
+    if (card.word === current.word || used.has(key(card))) continue;
+    used.add(key(card));
+    options.push(card);
+    if (options.length === count) break;
+  }
+  return options;
+}
+function accuracy(item){ const m=stats.mastered[progressKey(item)]; return m?.seen ? m.correct/m.seen : .55; }
 function dueItems(){
   const now=Date.now();
   return availableItems().filter(item=>{
-    const progress=stats.mastered[item.kanji];
+    const progress=stats.mastered[progressKey(item)];
     return progress?.seen&&progress.dueAt&&new Date(progress.dueAt).getTime()<=now;
   });
 }
@@ -144,7 +189,7 @@ function selectCards(mode){
     const fill=[...pool].filter(item=>!due.some(card=>card.word===item.word)).sort((a,b)=>accuracy(a)-accuracy(b));
     return [...due,...fill].slice(0,length);
   }
-  if(mode==='weak') return [...pool].sort((a,b)=>accuracy(a)-accuracy(b) || (stats.mastered[b.kanji]?.seen||0)-(stats.mastered[a.kanji]?.seen||0)).slice(0,length);
+  if(mode==='weak') return [...pool].sort((a,b)=>accuracy(a)-accuracy(b) || (stats.mastered[progressKey(b)]?.seen||0)-(stats.mastered[progressKey(a)]?.seen||0)).slice(0,length);
   if(mode==='quick') return [...pool].sort((a,b)=>(accuracy(a)+Math.random()*.35)-(accuracy(b)+Math.random()*.35)).slice(0,length);
   return shuffle(pool).slice(0,length);
 }
@@ -241,8 +286,8 @@ function mergeProgress(rows){
   const merged={...stats.mastered};
   for(const item of items){
     const remote=byId.get(item.id);if(!remote)continue;
-    const local=merged[item.kanji]||{seen:0,correct:0};
-    merged[item.kanji]={
+    const local=merged[progressKey(item)]||{seen:0,correct:0};
+    merged[progressKey(item)]={
       ...local,
       seen:Math.max(local.seen||0,remote.seen||0),
       correct:Math.max(local.correct||0,remote.correct||0),
@@ -261,7 +306,7 @@ async function migrateLocalProgress(remoteRows){
   const remoteById=new Map(remoteRows.map(row=>[row.vocabulary_id,row]));
   const payload=[];
   for(const item of items){
-    const local=stats.mastered[item.kanji];
+    const local=stats.mastered[progressKey(item)];
     if(!item.id||!local?.seen)continue;
     const remote=remoteById.get(item.id)||{seen:0,correct:0};
     payload.push({
@@ -279,11 +324,11 @@ async function synchronizeUser(){
   if(!supabase||!cloudUser)return;
   cloudStatus='syncing';cloudMessage='';updateCloudIndicator();
   try {
-    const [{data:remoteRows,error:progressError},{data:remotePreferences,error:preferencesError}]=await Promise.all([
-      supabase.from('user_progress').select('vocabulary_id,seen,correct,due_at,interval_days,last_reviewed_at'),
+    const [remoteRows,{data:remotePreferences,error:preferencesError}]=await Promise.all([
+      readCloudProgress(),
       supabase.from('user_preferences').select('level,session_length,daily_goal').maybeSingle()
     ]);
-    if(progressError||preferencesError)throw progressError||preferencesError;
+    if(preferencesError)throw preferencesError;
     const migrationKey=`kanjiSprintMigrated:${cloudUser.id}`;
     if(!localStorage.getItem(migrationKey)){
       await migrateLocalProgress(remoteRows||[]);
@@ -294,8 +339,7 @@ async function synchronizeUser(){
       preferences={...preferences,level:remotePreferences.level,length:remotePreferences.session_length,dailyGoal:remotePreferences.daily_goal};
       localStorage.setItem('kanjiSprintPreferences',JSON.stringify(preferences));
     } else await syncPreferences();
-    const {data:latest,error:latestError}=await supabase.from('user_progress').select('vocabulary_id,seen,correct,due_at,interval_days,last_reviewed_at');
-    if(latestError)throw latestError;
+    const latest=await readCloudProgress();
     mergeProgress(latest||[]);
     await flushReviewQueue();
     cloudStatus=reviewQueue().length?'error':'synced';
@@ -313,14 +357,40 @@ async function setCloudUser(user){
   if(cloudUser)await synchronizeUser();
   if(route==='account')renderAccount();
 }
+async function readCloudPages(buildQuery, sortColumn) {
+  const pageSize = 500;
+  const rows = [];
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await buildQuery().order(sortColumn).range(offset, offset + pageSize - 1);
+    if (error) throw error;
+    rows.push(...data);
+    if (data.length < pageSize) return rows;
+  }
+}
+
+function readCloudProgress() {
+  return readCloudPages(
+    () => supabase.from('user_progress').select('vocabulary_id,seen,correct,due_at,interval_days,last_reviewed_at'),
+    'vocabulary_id'
+  );
+}
+
 async function loadCloudCatalog(){
   if(!supabase||!navigator.onLine)return;
-  const {data,error}=await supabase.from('vocabulary').select('id,kanji,word,reading,romaji,meaning_fr,clue_fr,jlpt_level,example_jp,example_reading,example_fr').eq('active',true).order('id');
-  if (!error && data?.length) {
-    const catalog = data.map(catalogItem);
-    items = catalog;
-    localStorage.setItem('kanjiSprintCatalog', JSON.stringify(catalog));
+  try {
+    const rows = await readCloudPages(
+      () => supabase.from('vocabulary').select('id,kanji,word,reading,romaji,meaning_fr,clue_fr,jlpt_level,example_jp,example_reading,example_fr').eq('active',true),
+      'id'
+    );
+    items = rows.map(row => {
+      const cloud = catalogItem(row);
+      const source = referenceByWord.get(cloud.word)?.find(form => form.reading === cloud.reading);
+      return { ...source, ...cloud };
+    });
+    try { localStorage.setItem('kanjiSprintCatalog', JSON.stringify(items)); } catch {}
     if (route === 'library') renderLibraryResults();
+  } catch (error) {
+    console.warn('Cloud catalog unavailable', error.message);
   }
 }
 async function initializeCloud(){
@@ -439,7 +509,7 @@ function renderTyping(area,item){
 function answerTyping(item){
   if(session.answered) return;
   const input=document.querySelector('#answerInput'),value=input.value.trim().toLowerCase().normalize('NFKC'); if(!value)return;
-  session.answered=true; const ok=value===item.reading||value===item.romaji;
+  session.answered=true; const ok=vocabularyReadings(item).some(card => [card.reading, card.romaji].some(answer => answer.toLowerCase().normalize('NFKC') === value));
   input.disabled=true; input.style.borderColor=ok?'var(--green)':'var(--red)';
   const feedback=document.querySelector('#feedback'); feedback.className=`feedback ${ok?'good':'bad'}`;
   feedback.textContent=ok?t("正解！ Lecture correcte."):`${t("Réponse")} : ${item.reading} (${item.romaji})`;
@@ -464,7 +534,7 @@ function advanceAfter(delay) {
 }
 
 function renderFlash(area,item){
-  area.innerHTML=`<div class="flashcard" id="flashcard" role="button" tabindex="0" aria-label="${t("Retourner la carte")}"><div class="flash-inner"><div class="flash-face"><span class="level-badge">${item.level}</span><span class="prompt-label">${t("Quel est ce mot ?")}</span><div class="word-large" lang="ja">${escapeHtml(item.word)}</div><span class="tap-hint">${t("Toucher la carte pour révéler")}</span></div><div class="flash-face flash-back"><span class="level-badge dark">${item.level}</span><div class="reading"><span lang="ja">${escapeHtml(item.reading)}</span> · ${escapeHtml(item.romaji)}</div><div class="meaning">${escapeHtml(cardText(item, "meaning"))}</div><p class="detail">${t("Kanji :")} <span lang="ja">${escapeHtml(item.kanji)}</span> — ${escapeHtml(cardText(item, "clue"))}</p>${usageExample(item)}<span class="tap-hint">${t("Évalue ta réponse")}</span></div></div></div><div class="rate-row" id="rateRow" hidden>${audioButton(item.reading, t("Réécouter le mot"))}<button class="again" data-known="false">${t("À revoir")}</button><button class="know" data-known="true">${t("Je savais")}</button></div>`;
+  area.innerHTML=`<div class="flashcard" id="flashcard" role="button" tabindex="0" aria-label="${t("Retourner la carte")}"><div class="flash-inner"><div class="flash-face"><span class="level-badge">${item.level}</span><span class="prompt-label">${t("Quel est ce mot ?")}</span><div class="word-large" lang="ja">${escapeHtml(item.word)}</div><span class="tap-hint">${t("Toucher la carte pour révéler")}</span></div><div class="flash-face flash-back"><span class="level-badge dark">${item.level}</span><div class="reading"><span lang="ja">${escapeHtml(item.reading)}</span> · ${escapeHtml(item.romaji)}</div><div class="meaning">${escapeHtml(cardText(item, "meaning"))}</div>${item.kanji ? `<p class="detail">${t("Kanji :")} <span lang="ja">${escapeHtml(item.kanji)}</span>${item.clue ? ` — ${escapeHtml(cardText(item, "clue"))}` : ""}</p>` : ""}${usageExample(item)}<span class="tap-hint">${t("Évalue ta réponse")}</span></div></div></div><div class="rate-row" id="rateRow" hidden>${audioButton(item.reading, t("Réécouter le mot"))}<button class="again" data-known="false">${t("À revoir")}</button><button class="know" data-known="true">${t("Je savais")}</button></div>`;
   const card=document.querySelector('#flashcard'),row=document.querySelector('#rateRow');
   const reveal=()=>{
     if (card.classList.contains('revealed')) return;
@@ -479,8 +549,8 @@ function renderFlash(area,item){
 
 function record(item,ok){
   stats.total++; if(ok){stats.correct++;session.score++;}
-  stats.mastered[item.kanji]=stats.mastered[item.kanji]||{seen:0,correct:0};
-  const progress=stats.mastered[item.kanji];
+  stats.mastered[progressKey(item)]=stats.mastered[progressKey(item)]||{seen:0,correct:0};
+  const progress=stats.mastered[progressKey(item)];
   progress.seen++;if(ok)progress.correct++;
   progress.intervalDays=ok?Math.max(1,(progress.intervalDays||0)*2):0;
   progress.lastReviewedAt=new Date().toISOString();
@@ -501,11 +571,22 @@ function finishSession(){
 function renderProgress(){
   const success=stats.total?Math.round(stats.correct/stats.total*100):0;
   const mastery=Object.entries(stats.mastered).sort((a,b)=>b[1].seen-a[1].seen).slice(0,12);
-  app.innerHTML=`<section><p class="eyebrow">${t("Ton parcours")}</p><h1>${t("Progrès")}</h1><p class="hero-copy">${t("Chaque petite session compte. La révision ciblée utilise ces résultats pour choisir tes prochaines cartes.")}</p><div class="stats-grid"><div class="stat-card"><strong>${success}%</strong><span>${t("de réussite")}</span></div><div class="stat-card"><strong>${stats.sessions}</strong><span>${t("sessions")}</span></div><div class="stat-card"><strong>${stats.total}</strong><span>${t("cartes vues")}</span></div><div class="stat-card"><strong>${t("{n} j", {n:stats.streak})}</strong><span>${t("série actuelle")}</span></div></div>${mastery.length?`<button class="primary full-button" data-start="weak">${t("Travailler mes cartes faibles")}</button>`:''}<div class="section-title"><h2>${t("Kanji travaillés")}</h2><span>${mastery.length}</span></div>${mastery.length?`<div class="mastery-list">${mastery.map(([k,v])=>{const item=items.find(x=>x.kanji===k);return `<div class="mastery-row"><div class="mastery-kanji">${escapeHtml(k)}</div><div><strong>${escapeHtml(cardText(item, 'clue') || 'Kanji')}</strong><small>${t(v.seen === 1 ? "{n} révision" : "{n} révisions", {n:v.seen})} · ${item?.level||''}</small></div><span class="mastery-pct">${Math.round(v.correct/v.seen*100)}%</span></div>`;}).join('')}</div>`:`<div class="prompt-card"><div class="jp-large">始</div><p class="muted">${t("Lance ton premier quiz pour voir tes progrès ici.")}</p><button class="primary" data-start="quick">${t("Commencer")}</button></div>`}</section>`;
+  app.innerHTML=`<section><p class="eyebrow">${t("Ton parcours")}</p><h1>${t("Progrès")}</h1><p class="hero-copy">${t("Chaque petite session compte. La révision ciblée utilise ces résultats pour choisir tes prochaines cartes.")}</p><div class="stats-grid"><div class="stat-card"><strong>${success}%</strong><span>${t("de réussite")}</span></div><div class="stat-card"><strong>${stats.sessions}</strong><span>${t("sessions")}</span></div><div class="stat-card"><strong>${stats.total}</strong><span>${t("cartes vues")}</span></div><div class="stat-card"><strong>${t("{n} j", {n:stats.streak})}</strong><span>${t("série actuelle")}</span></div></div>${mastery.length?`<button class="primary full-button" data-start="weak">${t("Travailler mes cartes faibles")}</button>`:''}<div class="section-title"><h2>${t("Kanji travaillés")}</h2><span>${mastery.length}</span></div>${mastery.length?`<div class="mastery-list">${mastery.map(([k,v])=>{const item=items.find(x=>progressKey(x)===k);return `<div class="mastery-row"><div class="mastery-kanji" lang="ja">${escapeHtml(item?.kanji || item?.word || k.replace(/^word:/, ''))}</div><div><strong>${escapeHtml(cardText(item, 'clue') || 'Kanji')}</strong><small>${t(v.seen === 1 ? "{n} révision" : "{n} révisions", {n:v.seen})} · ${item?.level||''}</small></div><span class="mastery-pct">${Math.round(v.correct/v.seen*100)}%</span></div>`;}).join('')}</div>`:`<div class="prompt-card"><div class="jp-large">始</div><p class="muted">${t("Lance ton premier quiz pour voir tes progrès ici.")}</p><button class="primary" data-start="quick">${t("Commencer")}</button></div>`}</section>`;
 }
 
 function renderLibrary(){
-  app.innerHTML=`<section><p class="eyebrow">${t("{n} cartes disponibles", {n:items.length})}</p><h1>${t("Bibliothèque")}</h1><p class="hero-copy">${t("Recherche un mot, une lecture, un sens ou un kanji et écoute sa prononciation.")}</p><div class="library-tools"><input class="library-search" id="librarySearch" type="search" placeholder="${t("Ex. eau, みず, 水…")}" aria-label="${t("Rechercher dans les cartes")}"><div class="segmented library-levels">${['all', ...vocabularyLevels()].map(level=>`<button class="config-chip ${libraryLevel===level?'active':''}" data-library-level="${level}">${level==='all'?t("Tous"):level}</button>`).join('')}</div></div><div class="catalog-summary" id="catalogSummary"></div><div class="catalog-list" id="catalogList"></div></section>`;
+  app.innerHTML=`<section><p class="eyebrow">${t("{n} cartes disponibles", {n:items.length})}</p><h1>${t("Bibliothèque")}</h1><p class="hero-copy">${t("Recherche un mot, une lecture, un sens ou un kanji et écoute sa prononciation.")}</p><div class="library-tools"><input class="library-search" id="librarySearch" type="search" placeholder="${t("Ex. eau, みず, 水…")}" aria-label="${t("Rechercher dans les cartes")}"><div class="segmented library-levels">${['all', ...vocabularyLevels()].map(level=>`<button class="config-chip ${libraryLevel===level?'active':''}" data-library-level="${level}">${level==='all'?t("Tous"):level}</button>`).join('')}</div></div><div class="catalog-summary" id="catalogSummary"></div><div class="catalog-list" id="catalogList"></div>
+    <button type="button" class="secondary full-button" id="vocabularyMore" hidden>${t("Afficher plus")}</button>
+    <details class="kanji-sources">
+      <summary>${t("Sources et classement")}</summary>
+      <p>${t("Les listes N5 et N4 suivent le classement indicatif d’OpenJLPT.")}</p>
+      <p><a href="https://github.com/evanclan/OpenJLPT/blob/0d1d3410bec90bd4098a7c72de820543cb4f707c/NOTICE.md">OpenJLPT</a> ·
+      <a href="https://www.tanos.co.uk/jlpt/">Jonathan Waller</a> ·
+      <a href="https://www.edrdg.org/wiki/index.php/JMdict-EDICT_Dictionary_Project">JMdict (EDRDG)</a> ·
+      <a href="https://tatoeba.org/">Tatoeba</a> ·
+      <a href="https://www.edrdg.org/edrdg/licence.html">EDRDG</a> ·
+      <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a></p>
+    </details></section>`;
   const input=document.querySelector('#librarySearch');
   input.closest('.library-tools').insertAdjacentHTML('beforebegin',
     `<button type="button" class="secondary full-button" data-go="kanji">${t("Répertoire des kanjis · N5 à N1")}</button>`);
@@ -514,20 +595,40 @@ function renderLibrary(){
   renderLibraryResults();
 }
 
+function vocabularyVariants(item) {
+  const alternate = (referenceByWord.get(item.word) || []).filter(form => form.reading !== item.reading);
+  return alternate.map(form => `<p class="vocabulary-variant">
+    <span lang="ja">${escapeHtml(form.reading)}</span> · ${form.level} ·
+    ${escapeHtml(appLanguage === 'en' ? form.meaningEn : form.meaning)}
+  </p>`).join('');
+}
+
 function renderLibraryResults(){
   const list=document.querySelector('#catalogList'),summary=document.querySelector('#catalogSummary');
   if(!list||!summary)return;
+  const more = document.querySelector('#vocabularyMore');
+  let shown = 0;
   const query=libraryQuery.trim().toLocaleLowerCase(appLanguage);
   const filtered=items.filter(item=>{
-    if(libraryLevel!=='all'&&item.level!==libraryLevel)return false;
+    if (!matchesVocabularyLevel(item, libraryLevel)) return false;
     if(!query)return true;
-    return [item.kanji,item.word,item.reading,item.romaji,cardText(item,'meaning'),cardText(item,'clue'),item.example,item.exampleReading,cardText(item,'exampleMeaning')].some(value=>(value||'').toLocaleLowerCase(appLanguage).includes(query));
-  });
-  summary.textContent=`${t(filtered.length === 1 ? "{n} carte" : "{n} cartes", {n:filtered.length})} · ${vocabularyLevels().map(level => `${items.filter(item => item.level === level).length} ${level}`).join(' · ')}`;
-  list.innerHTML=filtered.length?filtered.map(item=>{
-    const progress=stats.mastered[item.kanji],success=progress?.seen?Math.round(progress.correct/progress.seen*100):null;
-    return `<article class="catalog-card"><div class="catalog-kanji" lang="ja">${escapeHtml(item.kanji)}</div><div class="catalog-copy"><div><strong lang="ja">${escapeHtml(item.word)}</strong><span><span lang="ja">${escapeHtml(item.reading)}</span> · ${escapeHtml(item.romaji)}</span></div><p>${escapeHtml(cardText(item, "meaning"))}</p><small>${item.level}${success===null?` · ${t('Nouvelle')}`:` · ${success}% · ${t(progress.seen === 1 ? "{n} vue" : "{n} vues", {n:progress.seen})}`}</small></div><button class="catalog-sound" data-speak="${escapeAttribute(item.reading)}" aria-label="${t("Écouter")} ${escapeAttribute(item.word)}">♪</button>${usageExample(item, true)}</article>`;
-  }).join(''):`<div class="empty-library"><strong>${t("Aucune carte trouvée")}</strong><p>${t("Essaie un autre mot ou change de niveau.")}</p></div>`;
+    const forms = vocabularyReadings(item).flatMap(form => [form.reading, form.romaji, cardText(form, 'meaning')]);
+    return [item.kanji,item.word,cardText(item,'clue'),item.example,item.exampleReading,cardText(item,'exampleMeaning'),...forms].some(value=>(value||'').toLocaleLowerCase(appLanguage).includes(query));
+  }).map(item => vocabularyForLevel(item, libraryLevel));
+  summary.textContent = t(filtered.length === 1 ? "{n} carte" : "{n} cartes", {n:filtered.length});
+  list.replaceChildren();
+  function showMore() {
+    const page = filtered.slice(shown, shown + 40);
+    list.insertAdjacentHTML('beforeend', page.map(item => {
+    const progress=stats.mastered[progressKey(item)],success=progress?.seen?Math.round(progress.correct/progress.seen*100):null;
+    return `<article class="catalog-card"><div class="catalog-kanji" lang="ja">${escapeHtml(item.kanji || '仮名')}</div><div class="catalog-copy"><div><strong lang="ja">${escapeHtml(item.word)}</strong><span><span lang="ja">${escapeHtml(item.reading)}</span> · ${escapeHtml(item.romaji)}</span></div><p>${escapeHtml(cardText(item, "meaning"))}</p><small>${item.level}${success===null?` · ${t('Nouvelle')}`:` · ${success}% · ${t(progress.seen === 1 ? "{n} vue" : "{n} vues", {n:progress.seen})}`}</small></div><button class="catalog-sound" data-speak="${escapeAttribute(item.reading)}" aria-label="${t("Écouter")} ${escapeAttribute(item.word)}">♪</button>${vocabularyVariants(item)}${usageExample(item, true)}</article>`;
+    }).join(''));
+    shown += page.length;
+    more.hidden = shown >= filtered.length;
+  }
+  if (!filtered.length) list.innerHTML = `<div class="empty-library"><strong>${t("Aucune carte trouvée")}</strong><p>${t("Essaie un autre mot ou change de niveau.")}</p></div>`;
+  more.onclick = showMore;
+  showMore();
 }
 
 document.addEventListener('change', event => {
