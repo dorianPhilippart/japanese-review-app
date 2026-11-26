@@ -190,6 +190,20 @@ p { line-height: 1.55; }
 .empty-library { padding: 34px 20px; text-align: center; border: 1px dashed var(--line); border-radius: 18px; color: var(--muted); }
 .empty-library p { margin-bottom: 0; }
 
+.kanji-title { margin-top: 18px; }
+#kanjiLevel, #kanjiSearch, #kanjiMore, #kanjiNext { margin-top: 10px; }
+#kanjiPractice { margin-bottom: 12px; }
+.kanji-entry { border: 1px solid var(--line); border-radius: 16px; background: var(--card); padding: 12px 16px; }
+.kanji-entry summary { cursor: pointer; min-height: 44px; font-size: 1rem; }
+.kanji-entry summary strong { display: inline-block; margin-inline: 8px 12px; font-size: 1.9rem; vertical-align: middle; }
+.kanji-details { display: grid; gap: 8px; text-align: left; margin: 12px 0 0; overflow-wrap: anywhere; }
+.kanji-details dt { color: var(--muted); font-size: .9rem; font-weight: 700; }
+.kanji-details dd { margin: 0; font-size: 1rem; }
+.kanji-sources { margin-top: 20px; color: var(--muted); font-size: .9rem; }
+.kanji-sources summary { cursor: pointer; }
+.kanji-sources a { color: var(--red-dark); }
+.kanji-practice .catalog-summary { margin-top: 14px; }
+
 .audio-setting { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; min-height: 44px; font-size: .9rem; }
 .audio-setting input { width: 20px; height: 20px; accent-color: var(--red-dark); }
 .reading-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px; margin-top: 12px; }

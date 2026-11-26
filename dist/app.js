@@ -335,9 +335,9 @@ async function initializeCloud(){
 
 function go(next){
   route=next; session=null;
-  const activeRoute=['home','progress','library'].includes(next)?next:next==='account'?null:'quick';
+  const activeRoute=next==='kanji'?'library':['home','progress','library'].includes(next)?next:next==='account'?null:'quick';
   document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.go===activeRoute));
-  if(next==='home')renderHome();else if(next==='progress')renderProgress();else if(next==='library')renderLibrary();else if(next==='account')renderAccount();else startQuiz(next);
+  if(next==='home')renderHome();else if(next==='progress')renderProgress();else if(next==='library')renderLibrary();else if(next==='kanji')renderKanjiCatalog();else if(next==='account')renderAccount();else startQuiz(next);
   window.scrollTo({top:0,behavior:'smooth'}); app.focus({preventScroll:true});
 }
 
@@ -500,6 +500,8 @@ function renderProgress(){
 function renderLibrary(){
   app.innerHTML=`<section><p class="eyebrow">${items.length} cartes disponibles</p><h1>Bibliothèque</h1><p class="hero-copy">Recherche un mot, une lecture, un sens ou un kanji et écoute sa prononciation.</p><div class="library-tools"><input class="library-search" id="librarySearch" type="search" placeholder="Ex. eau, みず, 水…" aria-label="Rechercher dans les cartes"><div class="segmented library-levels">${['all','N5','N4'].map(level=>`<button class="config-chip ${libraryLevel===level?'active':''}" data-library-level="${level}">${level==='all'?'Tous':level}</button>`).join('')}</div></div><div class="catalog-summary" id="catalogSummary"></div><div class="catalog-list" id="catalogList"></div></section>`;
   const input=document.querySelector('#librarySearch');
+  input.closest('.library-tools').insertAdjacentHTML('beforebegin',
+    '<button type="button" class="secondary full-button" data-go="kanji">Répertoire des kanjis · N5 à N1</button>');
   input.value=libraryQuery;
   input.addEventListener('input',()=>{libraryQuery=input.value;renderLibraryResults();});
   renderLibraryResults();
