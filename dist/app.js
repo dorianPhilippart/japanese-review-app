@@ -90,6 +90,7 @@ let preferenceSyncTimer=null;
 let reviewFlushPromise=null;
 let libraryQuery='';
 let libraryLevel='all';
+const vocabularyLevels = () => [...new Set(items.map(item => item.level))].sort((a, b) => b.localeCompare(a));
 let automaticAudio = loadObject('kanjiSprintAudio', { enabled: true }).enabled;
 
 function loadObject(key, fallback){
@@ -364,7 +365,7 @@ async function sendMagicLink(event){
 }
 
 function renderHome(){
-  const daily=getDaily(),goal=Number(preferences.dailyGoal)||10,todayDone=Math.min(goal,daily.count),dueCount=dueItems().length,levelName=preferences.level==='all'?'N5 + N4':preferences.level;
+  const daily=getDaily(),goal=Number(preferences.dailyGoal)||10,todayDone=Math.min(goal,daily.count),dueCount=dueItems().length,levelName=preferences.level==='all'?vocabularyLevels().join(' + '):preferences.level;
   app.innerHTML=`<section>
     <p class="eyebrow">毎日、少しずつ</p>
     <h1>${t("Un peu de japonais,<br>tous les jours.")}</h1>
@@ -376,7 +377,7 @@ function renderHome(){
     </div>
     ${cloudUser?`<button class="due-banner" data-start="due"><span class="due-icon">時</span><span><strong>${dueCount?t(dueCount === 1 ? "{n} révision due" : "{n} révisions dues", {n:dueCount}):t("Tout est à jour")}</strong><small>${dueCount?t("Commencer par les cartes arrivées à échéance"):t("La prochaine session consolidera de nouvelles cartes")}</small></span><b>›</b></button>`:''}
     <div class="study-config" aria-label="${t("Réglages de la session")}">
-      <div class="config-group"><span>${t("Niveau")}</span><div class="segmented">${['all','N5','N4'].map(level=>`<button class="config-chip ${preferences.level===level?'active':''}" data-level="${level}">${level==='all'?t("Tous"):level}</button>`).join('')}</div></div>
+      <div class="config-group"><span>${t("Niveau")}</span><div class="segmented vocabulary-levels">${['all', ...vocabularyLevels()].map(level=>`<button class="config-chip ${preferences.level===level?'active':''}" data-level="${level}">${level==='all'?t("Tous"):level}</button>`).join('')}</div></div>
       <div class="config-group"><span>${t("Cartes")}</span><div class="segmented">${[5,10,20].map(length=>`<button class="config-chip ${Number(preferences.length)===length?'active':''}" data-length="${length}">${length}</button>`).join('')}</div></div>
       <div class="config-group goal-config"><span>${t("Objectif quotidien")}</span><div class="segmented">${[5,10,20].map(goalValue=>`<button class="config-chip ${goal===goalValue?'active':''}" data-goal="${goalValue}">${goalValue}</button>`).join('')}</div></div>
       <label class="audio-setting language-setting" for="appLanguage">${t("Langue de l’application")}
@@ -504,7 +505,7 @@ function renderProgress(){
 }
 
 function renderLibrary(){
-  app.innerHTML=`<section><p class="eyebrow">${t("{n} cartes disponibles", {n:items.length})}</p><h1>${t("Bibliothèque")}</h1><p class="hero-copy">${t("Recherche un mot, une lecture, un sens ou un kanji et écoute sa prononciation.")}</p><div class="library-tools"><input class="library-search" id="librarySearch" type="search" placeholder="${t("Ex. eau, みず, 水…")}" aria-label="${t("Rechercher dans les cartes")}"><div class="segmented library-levels">${['all','N5','N4'].map(level=>`<button class="config-chip ${libraryLevel===level?'active':''}" data-library-level="${level}">${level==='all'?t("Tous"):level}</button>`).join('')}</div></div><div class="catalog-summary" id="catalogSummary"></div><div class="catalog-list" id="catalogList"></div></section>`;
+  app.innerHTML=`<section><p class="eyebrow">${t("{n} cartes disponibles", {n:items.length})}</p><h1>${t("Bibliothèque")}</h1><p class="hero-copy">${t("Recherche un mot, une lecture, un sens ou un kanji et écoute sa prononciation.")}</p><div class="library-tools"><input class="library-search" id="librarySearch" type="search" placeholder="${t("Ex. eau, みず, 水…")}" aria-label="${t("Rechercher dans les cartes")}"><div class="segmented library-levels">${['all', ...vocabularyLevels()].map(level=>`<button class="config-chip ${libraryLevel===level?'active':''}" data-library-level="${level}">${level==='all'?t("Tous"):level}</button>`).join('')}</div></div><div class="catalog-summary" id="catalogSummary"></div><div class="catalog-list" id="catalogList"></div></section>`;
   const input=document.querySelector('#librarySearch');
   input.closest('.library-tools').insertAdjacentHTML('beforebegin',
     `<button type="button" class="secondary full-button" data-go="kanji">${t("Répertoire des kanjis · N5 à N1")}</button>`);
@@ -522,7 +523,7 @@ function renderLibraryResults(){
     if(!query)return true;
     return [item.kanji,item.word,item.reading,item.romaji,cardText(item,'meaning'),cardText(item,'clue'),item.example,item.exampleReading,cardText(item,'exampleMeaning')].some(value=>(value||'').toLocaleLowerCase(appLanguage).includes(query));
   });
-  summary.textContent=`${t(filtered.length === 1 ? "{n} carte" : "{n} cartes", {n:filtered.length})} · ${items.filter(item=>item.level==='N5').length} N5 · ${items.filter(item=>item.level==='N4').length} N4`;
+  summary.textContent=`${t(filtered.length === 1 ? "{n} carte" : "{n} cartes", {n:filtered.length})} · ${vocabularyLevels().map(level => `${items.filter(item => item.level === level).length} ${level}`).join(' · ')}`;
   list.innerHTML=filtered.length?filtered.map(item=>{
     const progress=stats.mastered[item.kanji],success=progress?.seen?Math.round(progress.correct/progress.seen*100):null;
     return `<article class="catalog-card"><div class="catalog-kanji" lang="ja">${escapeHtml(item.kanji)}</div><div class="catalog-copy"><div><strong lang="ja">${escapeHtml(item.word)}</strong><span><span lang="ja">${escapeHtml(item.reading)}</span> · ${escapeHtml(item.romaji)}</span></div><p>${escapeHtml(cardText(item, "meaning"))}</p><small>${item.level}${success===null?` · ${t('Nouvelle')}`:` · ${success}% · ${t(progress.seen === 1 ? "{n} vue" : "{n} vues", {n:progress.seen})}`}</small></div><button class="catalog-sound" data-speak="${escapeAttribute(item.reading)}" aria-label="${t("Écouter")} ${escapeAttribute(item.word)}">♪</button>${usageExample(item, true)}</article>`;

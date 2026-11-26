@@ -208,6 +208,8 @@ p { line-height: 1.55; }
 .audio-setting input { width: 20px; height: 20px; accent-color: var(--red-dark); }
 .language-setting { justify-content: space-between; flex-wrap: wrap; }
 .language-setting select { flex: 0 0 auto; padding: 0 12px; }
+.vocabulary-levels { flex-wrap: wrap; }
+.vocabulary-levels .config-chip { flex: 1 0 38px; }
 .reading-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px; margin-top: 12px; }
 .reading-actions .sound-button, .rate-row .sound-button { margin: 0; }
 .rate-row[hidden] { display: none; }
